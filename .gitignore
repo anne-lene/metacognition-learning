@@ -1,0 +1,27 @@
+# Ignore compiled binaries
+*.exe
+*.dll
+
+# Ignore log files
+
+# Ignore sensitive configuration files
+
+# Ignore log Operating System Files
+fixed_feedback/.DS_Store
+variable_feedback/.DS_Store
+
+# Ignore entire directories
+fixed_feedback/notebooks/__pycache__/
+fixed_feedback/notebooks/.ipynb_checkpoints
+fixed_feedback/notebooks/.DS_Store/
+fixed_feedback/data/.DS_Store
+fixed_feedback/figures/
+
+variable_feedback/notebooks/__pycache__/
+variable_feedback/notebooks/.ipynb_checkpoints
+variable_feedback/notebooks/.DS_Store/
+variable_feedback/data/.DS_Store
+variable_feedback/figures/
+
+
+
