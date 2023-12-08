@@ -1,3 +1,5 @@
+.DS_Store
+
 # Ignore compiled binaries
 *.exe
 *.dll
@@ -25,5 +27,5 @@ variable_feedback/notebooks/__pycache__/
 variable_feedback/notebooks/.ipynb_checkpoints/
 variable_feedback/figures/
 
-
-
+utils/.ipynb_checkpoints/
+utils/__pycache__/
