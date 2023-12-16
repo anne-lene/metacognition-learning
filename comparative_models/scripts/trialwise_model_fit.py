@@ -15,8 +15,10 @@ import seaborn as sns
 from matplotlib.image import imread
 from tqdm import tqdm
 import matplotlib.lines as mlines
+import matplotlib.patches as mpatches
 from src.utility_functions import (create_truncated_normal,
-                                   add_session_column)
+                                   add_session_column,
+                                   HandlerNormalDist)
 from src.models import (fit_model,
                         random_model_w_bias,
                         random_model_w_bias_trial,
@@ -150,8 +152,10 @@ for pid_nr, participant in enumerate(tqdm(df.pid.unique(),
         # Set bounds
         alpha_bound = (0.001, 1)  # Alpha
         sigma_bound = (1, 100)    # Standard deviation
+        bias_bound = (0, 100)     # Mean at first trial
         bounds = [(alpha_bound[0], alpha_bound[1]),
-                  (sigma_bound[0], sigma_bound[1])]
+                  (sigma_bound[0], sigma_bound[1]),
+                  (bias_bound[0], bias_bound[1])]
 
 
         # Get results
@@ -166,13 +170,16 @@ for pid_nr, participant in enumerate(tqdm(df.pid.unique(),
 
         best_alpha = results_rw_symm[0]
         best_std = results_rw_symm[1]
-        nll = results_rw_symm[2]
-        aic = results_rw_symm[3]
-        bic = results_rw_symm[4]
-        pseudo_r2 = results_rw_symm[5]
+        best_bias = results_rw_symm[2]
+        nll = results_rw_symm[3]
+        aic = results_rw_symm[4]
+        bic = results_rw_symm[5]
+        pseudo_r2 = results_rw_symm[6]
 
 
-        trial_results = rw_symmetric_LR_trial((best_alpha, best_std),
+        trial_results = rw_symmetric_LR_trial((best_alpha,
+                                               best_std,
+                                               best_bias),
                                               confidence,
                                               feedback,
                                               n_trials)
@@ -289,18 +296,21 @@ for pid_nr, participant in enumerate(tqdm(df.pid.unique(),
                 trial_number = row_val+1
                 ax.text(-0.05, 0.5, trial_number,
                         transform=ax.transAxes,
-                        ha="right", va="center")
+                        ha="right", va="center",
+                        fontsize=19)
                 model_name_ = f'{model_name}'
                 if row_val == 0:
                     ax.text(0.5, 1.4, model_name_,
                             transform=ax.transAxes,
-                            ha="center", va="center")
+                            ha="center", va="center",
+                            fontsize=19)
 
             # Set fontsize for x-tick labels
             for ax in g.axes.flat:
                 for label in ax.get_xticklabels():
-                    label.set_size(16)
-                ax.set_xlabel(ax.get_xlabel(), fontsize=16)
+                    label.set_size(19)
+                ax.set_xlabel('Confidence', fontsize=19)
+
 
 
             # Save and Show the plot
@@ -344,17 +354,19 @@ for pid_nr, participant in enumerate(tqdm(df.pid.unique(),
                                          label='Participant Choice',
                                          linestyle='None')
 
-                blue_triangle = mlines.Line2D([], [], color='blue',
-                                                marker='^', linestyle='None',
-                                          markersize=10,
-                                          label='Purple triangles')
+                # Distribution symbol patch
+                dummy_line = mpatches.Patch(
+                    color='steelblue',
+                    label='Model Prediction Probability')
 
-                ax.legend(handles=[red_line, blue_triangle],
-                          labels=['Participant Choice',
-                                  'Model Prediction\nProbability'],
+                ax.legend([red_line, dummy_line],
+                          ['Participant Choice',
+                           'Model Prediction\nProbability'],
+                          handler_map={mpatches.Patch: HandlerNormalDist()},
                           bbox_to_anchor=(1.8, 1),
                           facecolor='white',
                           framealpha=1)
+
 
         # NLL plot
         ax = fig.add_subplot(gs[4, :])     # Span fifth row, all columns
@@ -377,8 +389,16 @@ for pid_nr, participant in enumerate(tqdm(df.pid.unique(),
         ax.set_xticks(x, x)
         ax.set_xlabel('Trial')
         ax.set_ylabel('NLL')
+
+        # Set condition as title
         condition = df_s.condition.unique()[1]
-        plt.suptitle(f'{condition}')
+        if condition == 'neut':
+            condition_string = "Neutral Feedback"
+        if condition == 'pos':
+            condition_string = "Positive Feedback"
+        if condition == 'neg':
+            condition_string = "Negative Feedback"
+        plt.suptitle(condition_string)
 
         ax.legend(bbox_to_anchor=(1, 1), facecolor='white', framealpha=1)
 
@@ -400,3 +420,5 @@ for pid_nr, participant in enumerate(tqdm(df.pid.unique(),
         # Show plot
         plt.show()
 
+        break
+    break

@@ -8,6 +8,9 @@ Created on Wed Dec  6 01:32:41 2023
 import numpy as np
 from scipy.integrate import quad
 from scipy.stats import truncnorm
+import matplotlib.patches as mpatches
+from matplotlib.legend_handler import HandlerPatch
+from matplotlib.path import Path
 
 # Utility functions
 
@@ -219,3 +222,27 @@ def create_probability_distribution(options=[1, 2, 3],
 
     return probabilities
 
+class HandlerNormalDist(HandlerPatch):
+    def create_artists(self, legend, orig_handle, xdescent, ydescent, width, height, fontsize, trans):
+        # Scaling factors for the size of the curve
+        scale_x = width / 4
+        scale_y = height * 1
+
+        # Horizontal shift to move the curve to the right
+        shift_x = width / 1.5 # Adjust this value to shift the curve
+
+        # Create a path for a normal distribution shape
+        x = np.linspace(-2, 2, 100)
+        y = np.exp(-x**2)
+        vertices = [(x[i] * scale_x + shift_x, y[i] * scale_y) for i in range(len(x))]
+        vertices = [(-2 * scale_x + shift_x, 0)] + vertices + [(2 * scale_x + shift_x, 0)]
+        codes = [Path.MOVETO] + [Path.LINETO] * len(x) + [Path.LINETO]
+        path = Path(vertices, codes)
+
+        # Create a patch from this path
+        patch = mpatches.PathPatch(path, #facecolor='none',
+                                   edgecolor=orig_handle.get_edgecolor(),
+                                   lw=0,
+                                   )
+        patch.set_transform(trans)
+        return [patch]

@@ -175,12 +175,14 @@ for participant in tqdm(df.pid.unique(), total=len(df.pid.unique())):
         bic_array_win_stay[session_idx] = results_win_stay[4]
 
         # Rescorla wagner model
-        # print('RW model...')
+
         # Set bounds
-        alpha_bound = (0.0001, 1)  # Alpha
+        alpha_bound = (0.001, 1)  # Alpha
         sigma_bound = (1, 100)    # Standard deviation
+        bias_bound = (0, 100)     # Mean at first trial
         bounds = [(alpha_bound[0], alpha_bound[1]),
-                  (sigma_bound[0], sigma_bound[1])]
+                  (sigma_bound[0], sigma_bound[1]),
+                  (bias_bound[0], bias_bound[1])]
 
         # Get results
         results_rw_symm = fit_model(model=rw_symmetric_LR,
@@ -194,10 +196,11 @@ for participant in tqdm(df.pid.unique(), total=len(df.pid.unique())):
 
         best_alpha = results_rw_symm[0]
         best_std = results_rw_symm[1]
-        nll = results_rw_symm[2]
-        aic = results_rw_symm[3]
-        bic = results_rw_symm[4]
-        pseudo_r2 = results_rw_symm[5]
+        best_bias = results_rw_symm[2]
+        nll = results_rw_symm[3]
+        aic = results_rw_symm[4]
+        bic = results_rw_symm[5]
+        pseudo_r2 = results_rw_symm[6]
 
         alpha_array_rw_symm[session_idx] = best_alpha
         sigma_array_rw_symm[session_idx] = best_std

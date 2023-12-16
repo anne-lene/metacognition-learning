@@ -37,7 +37,7 @@ def rw_symmetric_LR_trial(x, *args):
     ignores the baseline trial in its final output.
     """
 
-    alpha, sigma = x
+    alpha, sigma, bias = x
     confidence, feedback, n_trials = args
 
     sigma_vec = np.full(n_trials, sigma)  # vector for standard deviation
@@ -48,8 +48,8 @@ def rw_symmetric_LR_trial(x, *args):
             continue
 
         if t == 1:
-            # The probability stays centered around the previous confidence
-            model_pred[t] = confidence[t-1]
+            # The probability mean for the first trial (bias) is fit
+            model_pred[t] = bias
 
         if t > 1:
 
@@ -108,7 +108,7 @@ def rw_symmetric_LR(x, *args):
     baseline trial in its final output.
     """
 
-    alpha, sigma = x
+    alpha, sigma, bias = x
     confidence, feedback, n_trials = args
 
     sigma_vec = np.full(n_trials, sigma)  # vector for standard deviation
@@ -119,8 +119,8 @@ def rw_symmetric_LR(x, *args):
             continue
 
         if t == 1:
-            # The probability stays centered around the previous confidence
-            model_pred[t] = confidence[t-1]
+            # The probability mean for the first trial (bias) is fit
+            model_pred[t] = bias
 
         if t > 1:
 
