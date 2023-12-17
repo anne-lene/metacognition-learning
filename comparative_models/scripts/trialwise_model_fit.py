@@ -386,7 +386,8 @@ for pid_nr, participant in enumerate(tqdm(df.pid.unique(),
         ax.plot(x, nlls_trial, c='purple', label='RW model')
 
         ax.spines[['top', 'right']].set_visible(False)
-        ax.set_xticks(x, x)
+        ax.set_xticks(x)
+        ax.set_xticklabels(x)
         ax.set_xlabel('Trial')
         ax.set_ylabel('NLL')
 
@@ -398,7 +399,7 @@ for pid_nr, participant in enumerate(tqdm(df.pid.unique(),
             condition_string = "Positive Feedback"
         if condition == 'neg':
             condition_string = "Negative Feedback"
-        plt.suptitle(condition_string)
+        plt.suptitle(f'{condition_string} | Participant {pid_nr}')
 
         ax.legend(bbox_to_anchor=(1, 1), facecolor='white', framealpha=1)
 
@@ -419,6 +420,3 @@ for pid_nr, participant in enumerate(tqdm(df.pid.unique(),
                     dpi=300)
         # Show plot
         plt.show()
-
-        break
-    break
