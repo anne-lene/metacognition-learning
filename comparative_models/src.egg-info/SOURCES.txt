@@ -1,5 +1,8 @@
 setup.py
 src/__init__.py
+src/model_fitting_functions.py
+src/models.py
+src/utils.py
 src.egg-info/PKG-INFO
 src.egg-info/SOURCES.txt
 src.egg-info/dependency_links.txt

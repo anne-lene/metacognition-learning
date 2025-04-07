@@ -29,3 +29,8 @@ variable_feedback/figures/
 
 utils/.ipynb_checkpoints/
 utils/__pycache__/
+
+
+# Ignore dev folders in comparative_models 
+comparative_models/docs/
+comparative_models/tests/
