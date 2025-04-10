@@ -17,39 +17,35 @@ import matplotlib.colors as mcolors
 from matplotlib import pyplot as plt
 from tqdm import tqdm
 import os
-from src.utility_functions import add_session_column
 from scipy.stats import stats
-from src.models import (fit_model,
-                        fit_model_with_cv,
-                        fit_random_model,
-                        random_model,
-                        random_model_w_bias,
-                        win_stay_lose_shift,
-                        rw_symmetric_LR,
-                        choice_kernel,
-                        RW_choice_kernel,
-                        delta_P_RW)
+from src.utils import load_df
 
 # Import data - Varied feedback condition (Experiment 2)
-current_directory = os.path.dirname(os.path.abspath(__file__))
-parent_directory = os.path.dirname(current_directory)
-grandparent_directory = os.path.dirname(parent_directory)
-project_path = grandparent_directory
-experiment_data_path = r'variable_feedback/data'
-data_file = r'variable_fb_data_full_processed.csv'
-full_path = os.path.join(project_path, experiment_data_path, data_file)
-df = pd.read_csv(full_path, low_memory=False)
+df=load_df(EXP=2)
+# =============================================================================
+# current_directory = os.path.dirname(os.path.abspath(__file__))
+# parent_directory = os.path.dirname(current_directory)
+# grandparent_directory = os.path.dirname(parent_directory)
+# project_path = grandparent_directory
+# experiment_data_path = r'variable_feedback/data'
+# data_file = r'variable_fb_data_full_processed.csv'
+# full_path = os.path.join(project_path, experiment_data_path, data_file)
+# df = pd.read_csv(full_path, low_memory=False)
+# =============================================================================
 
 
 #%% Read the metrics from the Excel file and assign to variables
 
-local_folder = r'C:\Users\carll\OneDrive\Skrivbord\Oxford\DPhil'
-working_dir = r'metacognition-learning\comparative_models'
-save_path = r'results\variable_feedback\model_comparison'
-name = 'model_metrics_CV_ORIGINAL.xlsx'
-save_path_full = os.path.join(local_folder, working_dir, save_path, name)
+# =============================================================================
+# local_folder = r'C:\Users\carll\OneDrive\Skrivbord\Oxford\DPhil'
+# working_dir = r'metacognition-learning\comparative_models'
+# save_path = r'results\variable_feedback\model_comparison'
+# name = 'model_metrics_CV_ORIGINAL.xlsx'
+# save_path_full = os.path.join(local_folder, working_dir, save_path, name)
+# =============================================================================
+
 #df_m = pd.read_excel('EXP2_model_metrics_sessions_CV_v3_rand_column_change.xlsx')
-df_m = pd.read_excel('EXP2_model_metrics_sessions_CV_v10.xlsx')
+df_m = pd.read_excel('C:/Users/carll/OneDrive/Skrivbord/Oxford/DPhil/metacognition-learning/comparative_models/results/variable_feedback/model_comparison/models_fit_to_data/model_fits_EXP2_data.xlsx')
 df_m = df_m.rename(columns=lambda col: col if col.endswith('_p') else f"{col}_p")
 
 #%% Relative fit
@@ -61,15 +57,15 @@ def calculate_mean_sem(data):
 
 # List of models and their corresponding metrics in the DataFrame
 models_metrics = [
-    ['random', 'nll_array_random_p', 'aic_array_random_p', 'bic_array_random_p'],
-    ['bias', 'nll_array_bias_p', 'aic_array_bias_p', 'bic_array_bias_p'],
-    ['win_stay', 'nll_array_win_stay_p', 'aic_array_win_stay_p', 'bic_array_win_stay_p'],
-    #['rw_static', 'nll_array_rw_static_p', 'aic_array_rw_static_p', 'bic_array_rw_static_p'],
-    ['rw_symm', 'nll_array_rw_symm_p', 'aic_array_rw_symm_p', 'bic_array_rw_symm_p'],
-    ['rw_cond', 'nll_array_rw_cond_p', 'aic_array_rw_cond_p', 'bic_array_rw_cond_p'],
-    ['ck', 'nll_array_ck_p', 'aic_array_ck_p', 'bic_array_ck_p'],
-    ['rwck', 'nll_array_rwck_p', 'aic_array_rwck_p', 'bic_array_rwck_p'],
-    ['delta_p_rw', 'nll_array_delta_p_rw_p', 'aic_array_delta_p_rw_p', 'bic_array_delta_p_rw_p'],
+    ['random', 'nll_random_p', 'aic_random_p', 'bic_random_p'],
+    ['bias', 'nll_bias_p', 'aic_bias_p', 'bic_bias_p'],
+    ['wsls', 'nll_win_stay_p', 'aic_win_stay_p', 'bic_win_stay_p'],
+    #['rw_static', 'nll_rw_static_p', 'aic_rw_static_p', 'bic_rw_static_p'],
+    ['rw', 'nll_rw_symm_p', 'aic_rw_symm_p', 'bic_rw_symm_p'],
+    ['rw_cond', 'nll_rw_cond_p', 'aic_rw_cond_p', 'bic_rw_cond_p'],
+    ['ck', 'nll_ck_p', 'aic_ck_p', 'bic_ck_p'],
+    ['rwck', 'nll_rwck_p', 'aic_rwck_p', 'bic_rwck_p'],
+    ['rwod', 'nll_rwpd_p', 'aic_rwpd_p', 'bic_rwpd_p'],
 ]
 
 # Dictionary to store the results
@@ -130,7 +126,7 @@ import matplotlib.pyplot as plt
 from scipy.stats import shapiro, ttest_rel, wilcoxon
 from statsmodels.stats.multitest import multipletests
 
-# Assuming nll_array_*_p are defined elsewhere
+# Assuming nll_*_p are defined elsewhere
 model_names = [
     "Random", "Biased", "Win-Stay-Lose-Shift",
     "RW", "RW-Cond", "Choice Kernel",
@@ -150,9 +146,9 @@ color_mapping = {
 }
 
 model_values = [
-    nll_array_random_p, nll_array_bias_p, nll_array_win_stay_p,
-    nll_array_rw_symm_p, nll_array_rw_cond_p, nll_array_ck_p,
-    nll_array_rwck_p, nll_array_delta_p_rw_p
+    nll_random_p, nll_bias_p, nll_win_stay_p,
+    nll_rw_symm_p, nll_rw_cond_p, nll_ck_p,
+    nll_rwck_p, nll_rwpd_p
 ]
 
 # Perform pairwise statistical tests between all models
@@ -279,14 +275,14 @@ plt.rcParams.update({'font.size': font_size})
 
 # Prepare data for plotting
 metric = [
-    [nll_array_random_p,
-     nll_array_bias_p,
-     nll_array_win_stay_p,
-     nll_array_rw_symm_p,
-     nll_array_rw_cond_p,
-     nll_array_ck_p,
-     nll_array_rwck_p,
-     nll_array_delta_p_rw_p]
+    [nll_random_p,
+     nll_bias_p,
+     nll_win_stay_p,
+     nll_rw_symm_p,
+     nll_rw_cond_p,
+     nll_ck_p,
+     nll_rwck_p,
+     nll_delta_p_rw_p]
 ]
 
 model_names = [
@@ -310,10 +306,10 @@ color_mapping = {
 color_mapping_k = {name: "black" for name in model_names}
 
 model_values = [
-    nll_array_random_p, nll_array_bias_p, nll_array_win_stay_p,
-    nll_array_rw_symm_p, nll_array_rw_cond_p,
-    nll_array_ck_p, nll_array_rwck_p,
-    nll_array_delta_p_rw_p
+    nll_random_p, nll_bias_p, nll_win_stay_p,
+    nll_rw_symm_p, nll_rw_cond_p,
+    nll_ck_p, nll_rwck_p,
+    nll_delta_p_rw_p
 ]
 
 data = []
@@ -628,8 +624,8 @@ plt.show()
 #%%
 
 # Perform normality test for the differences
-diff_winstay = nll_array_rw_symm_p - nll_array_delta_p_rw_p
-diff_rw = nll_array_rw_symm_p - nll_array_delta_p_rw_p
+diff_winstay = nll_rw_symm_p - nll_delta_p_rw_p
+diff_rw = nll_rw_symm_p - nll_delta_p_rw_p
 
 # Test for normality
 _, p_value_normal_winstay = shapiro(diff_winstay)
@@ -641,21 +637,21 @@ alpha = 0.05 / num_comparisons
 
 # Choose the test based on the normality of the differences
 if p_value_normal_winstay > alpha:
-    _, p_value_winstay = ttest_rel(nll_array_delta_p_rw_p,
-                                   nll_array_win_stay_p)
+    _, p_value_winstay = ttest_rel(nll_delta_p_rw_p,
+                                   nll_win_stay_p)
     print('paired t-test RW and WSLS')
 else:
-    _, p_value_winstay = wilcoxon(nll_array_delta_p_rw_p,
-                                  nll_array_win_stay_p)
+    _, p_value_winstay = wilcoxon(nll_delta_p_rw_p,
+                                  nll_win_stay_p)
     print('wilcoxon RW and WSLS')
 
 if p_value_normal_rw > alpha:
-    _, p_value_rwpd = ttest_rel(nll_array_delta_p_rw_p,
-                                nll_array_rw_symm_p)
+    _, p_value_rwpd = ttest_rel(nll_delta_p_rw_p,
+                                nll_rw_symm_p)
     print('paired t-test RW and RWPD')
 else:
-    _, p_value_rwpd = wilcoxon(nll_array_delta_p_rw_p,
-                               nll_array_rw_symm_p)
+    _, p_value_rwpd = wilcoxon(nll_delta_p_rw_p,
+                               nll_rw_symm_p)
     print('wilcoxon RW and RWPD')
 
 # Annotate significance
@@ -697,10 +693,10 @@ def annotate_significance(ax, x1, x2, y1_values, y2_values, p_value,
     ax.text((x1 + x2) / 2, y_max, sig_level, ha='center', va='bottom')
 
 annotate_significance(ax1, 2.4, 7.4,
-                      nll_array_win_stay_p, nll_array_delta_p_rw_p,
+                      nll_win_stay_p, nll_delta_p_rw_p,
                       p_value_winstay, num_comparisons, 20.5, 0.2)
 annotate_significance(ax1, 3.4, 7.4,
-                      nll_array_rw_symm_p, nll_array_delta_p_rw_p,
+                      nll_rw_symm_p, nll_delta_p_rw_p,
                       p_value_rwpd, num_comparisons, 5.6, 0.2)
 
 print('p_value_rwpd', round(p_value_rwpd, 6))
@@ -764,10 +760,10 @@ for participant in tqdm(df.pid.unique()[:], total=len(df.pid.unique()[:])):
 bdi = np.array(bdi)
 
 if best_fits:
-    x = df_m.alpha_array_delta_p_rw_p[pid_rwpd_best.values]
+    x = df_m.alpha_delta_p_rw_p[pid_rwpd_best.values]
     y = bdi[pid_rwpd_best.values]
 else:
-    x = df_m.alpha_array_delta_p_rw_p.values
+    x = df_m.alpha_delta_p_rw_p.values
     y = bdi
 
 # Calculate the linear regression and correlation
@@ -841,10 +837,10 @@ for participant in tqdm(df.pid.unique()[:], total=len(df.pid.unique()[:])):
 bdi = np.array(bdi)
 
 if best_fits:
-    x = df_m.alpha_array_rw_symm_p[pid_rw_best.values]
+    x = df_m.alpha_rw_symm_p[pid_rw_best.values]
     y = bdi[pid_rw_best.values]
 else:
-    x = df_m.alpha_array_rw_symm_p.values
+    x = df_m.alpha_rw_symm_p.values
     y = bdi
 
 # Calculate the linear regression and correlation
@@ -919,7 +915,7 @@ bdi = []
 alpha = []
 for participant in tqdm(df['pid'].unique()):
     bdi_score = df[df['pid'] == participant].bdi_score.unique()[0]
-    alpha_value = df_m[df_m['pid_p'] == participant].alpha_array_rw_symm_p.values[0]  # Assuming alpha is stored here
+    alpha_value = df_m[df_m['pid_p'] == participant].alpha_rw_symm_p.values[0]  # Assuming alpha is stored here
     bdi.append(bdi_score)
     alpha.append(alpha_value)
 
@@ -981,15 +977,15 @@ results = {}
 
 # List of models and their corresponding metrics in the DataFrame
 models_metrics = [
-    ['random', 'nll_array_random_p', 'aic_array_random_p', 'bic_array_random_p'],
-    ['bias', 'nll_array_bias_p', 'aic_array_bias_p', 'bic_array_bias_p'],
-    ['win_stay', 'nll_array_win_stay_p', 'aic_array_win_stay_p', 'bic_array_win_stay_p'],
-    #['rw_static', 'nll_array_rw_static_p', 'aic_array_rw_static_p', 'bic_array_rw_static_p'],
-    ['rw_symm', 'nll_array_rw_symm_p', 'aic_array_rw_symm_p', 'bic_array_rw_symm_p'],
-    ['rw_cond', 'nll_array_rw_cond_p', 'aic_array_rw_cond_p', 'bic_array_rw_cond_p'],
-    ['ck', 'nll_array_ck_p', 'aic_array_ck_p', 'bic_array_ck_p'],
-    ['rwck', 'nll_array_rwck_p', 'aic_array_rwck_p', 'bic_array_rwck_p'],
-    ['delta_p_rw', 'nll_array_delta_p_rw_p', 'aic_array_delta_p_rw_p', 'bic_array_delta_p_rw_p'],
+    ['random', 'nll_random_p', 'aic_random_p', 'bic_random_p'],
+    ['bias', 'nll_bias_p', 'aic_bias_p', 'bic_bias_p'],
+    ['win_stay', 'nll_win_stay_p', 'aic_win_stay_p', 'bic_win_stay_p'],
+    #['rw_static', 'nll_rw_static_p', 'aic_rw_static_p', 'bic_rw_static_p'],
+    ['rw_symm', 'nll_rw_symm_p', 'aic_rw_symm_p', 'bic_rw_symm_p'],
+    ['rw_cond', 'nll_rw_cond_p', 'aic_rw_cond_p', 'bic_rw_cond_p'],
+    ['ck', 'nll_ck_p', 'aic_ck_p', 'bic_ck_p'],
+    ['rwck', 'nll_rwck_p', 'aic_rwck_p', 'bic_rwck_p'],
+    ['delta_p_rw', 'nll_delta_p_rw_p', 'aic_delta_p_rw_p', 'bic_delta_p_rw_p'],
 ]
 
 # Loop through each model and metric, calculate mean and SEM, and store in results dictionary
@@ -1027,7 +1023,7 @@ import matplotlib.pyplot as plt
 from scipy.stats import shapiro, ttest_rel, wilcoxon
 from statsmodels.stats.multitest import multipletests
 
-# Assuming nll_array_*_p are defined elsewhere
+# Assuming nll_*_p are defined elsewhere
 model_names = [
     "Random", "Biased", "Win-Stay-Lose-Shift",
     "RW", "RW-Cond", "Choice Kernel",
@@ -1047,9 +1043,9 @@ color_mapping = {
 }
 
 model_values = [
-    nll_array_random_p, nll_array_bias_p, nll_array_win_stay_p,
-    nll_array_rw_symm_p, nll_array_rw_cond_p, nll_array_ck_p,
-    nll_array_rwck_p, nll_array_delta_p_rw_p
+    nll_random_p, nll_bias_p, nll_win_stay_p,
+    nll_rw_symm_p, nll_rw_cond_p, nll_ck_p,
+    nll_rwck_p, nll_delta_p_rw_p
 ]
 
 # Perform pairwise statistical tests between all models
@@ -1176,14 +1172,14 @@ plt.rcParams.update({'font.size': font_size})
 
 # Prepare data for plotting
 metric = [
-    [nll_array_random_p,
-     nll_array_bias_p,
-     nll_array_win_stay_p,
-     nll_array_rw_symm_p,
-     nll_array_rw_cond_p,
-     nll_array_ck_p,
-     nll_array_rwck_p,
-     nll_array_delta_p_rw_p]
+    [nll_random_p,
+     nll_bias_p,
+     nll_win_stay_p,
+     nll_rw_symm_p,
+     nll_rw_cond_p,
+     nll_ck_p,
+     nll_rwck_p,
+     nll_delta_p_rw_p]
 ]
 
 model_names = [
@@ -1207,10 +1203,10 @@ color_mapping = {
 color_mapping_k = {name: "black" for name in model_names}
 
 model_values = [
-    nll_array_random_p, nll_array_bias_p, nll_array_win_stay_p,
-    nll_array_rw_symm_p, nll_array_rw_cond_p,
-    nll_array_ck_p, nll_array_rwck_p,
-    nll_array_delta_p_rw_p
+    nll_random_p, nll_bias_p, nll_win_stay_p,
+    nll_rw_symm_p, nll_rw_cond_p,
+    nll_ck_p, nll_rwck_p,
+    nll_delta_p_rw_p
 ]
 
 data = []
@@ -1484,8 +1480,8 @@ plt.show()
 #%%
 
 # Perform normality test for the differences
-diff_winstay = nll_array_rw_symm_p - nll_array_delta_p_rw_p
-diff_rw = nll_array_rw_symm_p - nll_array_delta_p_rw_p
+diff_winstay = nll_rw_symm_p - nll_delta_p_rw_p
+diff_rw = nll_rw_symm_p - nll_delta_p_rw_p
 
 # Test for normality
 _, p_value_normal_winstay = shapiro(diff_winstay)
@@ -1497,21 +1493,21 @@ alpha = 0.05 / num_comparisons
 
 # Choose the test based on the normality of the differences
 if p_value_normal_winstay > alpha:
-    _, p_value_winstay = ttest_rel(nll_array_delta_p_rw_p,
-                                   nll_array_win_stay_p)
+    _, p_value_winstay = ttest_rel(nll_delta_p_rw_p,
+                                   nll_win_stay_p)
     print('paired t-test RW and WSLS')
 else:
-    _, p_value_winstay = wilcoxon(nll_array_delta_p_rw_p,
-                                  nll_array_win_stay_p)
+    _, p_value_winstay = wilcoxon(nll_delta_p_rw_p,
+                                  nll_win_stay_p)
     print('wilcoxon RW and WSLS')
 
 if p_value_normal_rw > alpha:
-    _, p_value_rwpd = ttest_rel(nll_array_delta_p_rw_p,
-                                nll_array_rw_symm_p)
+    _, p_value_rwpd = ttest_rel(nll_delta_p_rw_p,
+                                nll_rw_symm_p)
     print('paired t-test RW and RWPD')
 else:
-    _, p_value_rwpd = wilcoxon(nll_array_delta_p_rw_p,
-                               nll_array_rw_symm_p)
+    _, p_value_rwpd = wilcoxon(nll_delta_p_rw_p,
+                               nll_rw_symm_p)
     print('wilcoxon RW and RWPD')
 
 # Annotate significance
@@ -1553,10 +1549,10 @@ def annotate_significance(ax, x1, x2, y1_values, y2_values, p_value,
     ax.text((x1 + x2) / 2, y_max, sig_level, ha='center', va='bottom')
 
 annotate_significance(ax1, 2.4, 7.4,
-                      nll_array_win_stay_p, nll_array_delta_p_rw_p,
+                      nll_win_stay_p, nll_delta_p_rw_p,
                       p_value_winstay, num_comparisons, 20.5, 0.2)
 annotate_significance(ax1, 3.4, 7.4,
-                      nll_array_rw_symm_p, nll_array_delta_p_rw_p,
+                      nll_rw_symm_p, nll_delta_p_rw_p,
                       p_value_rwpd, num_comparisons, 5.6, 0.2)
 
 print('p_value_rwpd', round(p_value_rwpd, 6))

@@ -8,7 +8,7 @@ Created on Thu Apr 11 18:52:09 2024
 # Linear Mixed Models
 
 import numpy as np
-from src.utility_functions import (add_session_column)
+from src.utils import (add_session_column, load_df)
 import pandas as pd
 from matplotlib import pyplot as plt
 import os
@@ -17,11 +17,15 @@ from mpl_toolkits.axes_grid1 import make_axes_locatable
 import statsmodels.api as sm
 import scipy.stats as stats
 import statsmodels.formula.api as smf
-from src.utility_functions import load_fixed_feedback_data
+
 
 
 #%%
-df_a = load_fixed_feedback_data()
+df_a = load_df(EXP=1)
+
+
+#%% Add session column
+df_a = df_a.groupby('pid').apply(add_session_column).reset_index(drop=True)
 
 #%% Restructure df
 
@@ -36,7 +40,7 @@ df = df_a.copy()
 df['trial'] = [np.array(range(20)) for i in range(len(df))]
 df['session'] = [[i]*20 for i in df['session'].values]
 df['pid'] = [[i]*20 for i in df['pid'].values]
-df['condition'] = [[i]*20 for i in df['condition_list'].values]
+df['condition'] = [[i]*20 for i in df['condition'].values]
 
 # Create dict
 data = {

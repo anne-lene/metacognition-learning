@@ -49,7 +49,7 @@ def RWPD_sim (x, *args):
     confidence, feedback, n_trials, performance = args
     """
 
-    alpha, sigma, gamma, w_RW, w_PD = x
+    alpha, sigma, gamma, w_RW, w_PD, intercept = x
     confidence, feedback, n_trials, performance = args
 
     model_pred = np.zeros(n_trials)
@@ -95,7 +95,7 @@ def RWPD_sim (x, *args):
             # Encure delta_p is between -100 and 100.
             delta_p = max(-100, min(100, delta_p))
 
-            model_pred[t] = max(0, min(100, int((w_RW*c_rw[t]) + (w_PD*delta_p))))
+            model_pred[t] = max(0, min(100, intercept + int((w_RW*c_rw[t]) + (w_PD*delta_p))))
 
             # Calculate probabilities across different options (p_options)
             conf_sim, p_options = sim_norm_prob_vectorized(
@@ -117,7 +117,7 @@ def RWP_sim (x, *args, non_linear=True):
     confidence, feedback, n_trials, performance = args
     """
 
-    alpha, sigma, w_RW, w_PD, theta = x
+    alpha, sigma, w_RW, w_PD, intercept = x
     confidence, feedback, n_trials, performance = args
     model_pred = np.zeros(n_trials)
     c_rw = np.zeros(n_trials)
@@ -156,7 +156,7 @@ def RWP_sim (x, *args, non_linear=True):
                 # Negative absolute error.
                 # The theta/"100" establish a threshold for when the error
                 # should be considered worse than expected.
-                c_P = theta + performance[t]
+                c_P = 100 + performance[t]
 
                 # Using predictions of performance
                 #PP = np.mean(performance[t-3:t]) # Performance prediction
@@ -173,7 +173,7 @@ def RWP_sim (x, *args, non_linear=True):
             #model_pred[t] = max(0, min(100, ((w_RW*c_rw[t]) + (w_PD*c_P))/k ))
 
             # Sum up the weighted influences
-            model_pred[t] = max(0, min(100, (w_RW*c_rw[t]) + (w_PD*c_P)))
+            model_pred[t] = max(0, min(100, intercept + (w_RW*c_rw[t]) + (w_PD*c_P)))
 
             # Calculate probabilities across different options (p_options)
             conf_sim, p_options = sim_norm_prob_vectorized(
@@ -235,30 +235,30 @@ def get_session_dfs(df):
 trials = 15
 iterations = 100
 
-confidence, feedback, n_trials, performance = rand_uni_arr(), rand_uni_arr(), 15, rand_uni_arr(high=30)
+confidence, feedback, n_trials, performance = rand_uni_arr(), rand_uni_arr(), 15, rand_uni_arr(high=40)
 performance = -performance
 
 # Parameters
 # The range w_PD = 2-5 balances the range w_RW = 0-1 without the model
 # regressing into a simple RW model.
 
-alpha, sigma, gamma, w_RW, w_PD, w_P, theta = 0.2, 10, 1, 0.5, 1, 0.2, 20
+alpha, sigma, gamma, w_RW, w_PD, w_P, intercept = 0.2, 10, 1, 0.0, 0.4, .3, 20
 
 # Predictions
-conf_vec, p_options = RWPD_sim((alpha, sigma, gamma, w_RW, w_PD),
+conf_vec, p_options = RWPD_sim((alpha, sigma, gamma, w_RW, w_PD, intercept),
                                confidence, feedback, n_trials, performance,
                                )
 
-conf_vec_rw , p_options_rw  = RWPD_sim((alpha, sigma, gamma, w_RW, 0),
+conf_vec_rw , p_options_rw  = RWPD_sim((alpha, sigma, gamma, w_RW, 0, 0),
                                confidence, feedback, n_trials, performance,
                                )
 
-conf_vec_p, p_options_p = RWPD_sim((alpha, sigma, gamma, 0, w_PD),
+conf_vec_p, p_options_p = RWPD_sim((alpha, sigma, gamma, 0, w_PD, intercept),
                                confidence, feedback, n_trials, performance,
                                )
 
 # Predictions
-conf_vec_rwp, p_options_rwp = RWP_sim((alpha, sigma, w_RW, w_P, theta),
+conf_vec_rwp, p_options_rwp = RWP_sim((alpha, sigma, w_RW, w_P, intercept),
                                confidence, feedback, n_trials, performance,
                                non_linear=False)
 
@@ -287,4 +287,5 @@ ax2.set_ylabel('Confidence estimated')
 ax2.set_xlabel('Trials')
 ax2.set_title(f'confidence over trials')
 ax.set_ylim(0, 0.4)
+ax2.set_ylim(0, 100)
 plt.show()

@@ -55,12 +55,12 @@ def calc_norm_prob_vectorized(confidence, mean, sigma,
 # Simulate some example data for visualization
 n_trials = 15
 array_length = 101
-alpha = 0.3
-alpha_ck = 0.2
-sigma = 8
+alpha = 0.0
+alpha_ck = 0.3
+sigma = 10
 sigma_ck = sigma
-beta = 40
-beta_ck = beta
+beta = 0
+beta_ck = 2
 bias = 100
 
 feedback = np.random.choice([0, 1], size=n_trials)

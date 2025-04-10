@@ -91,7 +91,10 @@ def RWP_sim (x, *args, non_linear=True):
             if non_linear:
                 c_P = 100 / (1 + np.exp(-performance[t]  / 20))
             else:
-                c_P = 100 + performance[t]  # Negative absolute error. The "100" establish a threshold for when the error size should be considered so large that it can be ignored.
+                # Negative absolute error.
+                # The "100" establish a threshold for when the error size
+                # should be considered so large that it can be ignored.
+                c_P = 100 + performance[t]
 
                 # Using predictions of performance
                 #PP = np.mean(performance[t-3:t]) # Performance prediction
@@ -226,11 +229,11 @@ def RW_sim(x, *args):
 trials = 15
 iterations = 100
 
-confidence, feedback, n_trials, performance = rand_uni_arr(), rand_uni_arr(), 15, rand_uni_arr(high=60)
+confidence, feedback, n_trials, performance = rand_uni_arr(), rand_uni_arr(), 15, rand_uni_arr(high=20)
 performance = -performance
 
 # Parameters
-alpha, sigma, w_RW, w_P, intercept = 0.2, 10, 0.9, 0.2, -10
+alpha, sigma, w_RW, w_P, intercept = 0.8, 3, 0.9, 0.3, -35
 
 
 # Predictions
@@ -288,7 +291,7 @@ for i in range(iterations):
     alpha, sigma, w_RW, w_P = 0.5, 25, 0.3, .9
 
     # Predictions
-    conf_vec, p_options = P_RW_sim((alpha, sigma, w_RW, w_P),
+    conf_vec, p_options = RWP_sim((alpha, sigma, w_RW, w_P),
                                    confidence, feedback, n_trials, performance,
                                    non_linear=False)
 
@@ -323,7 +326,7 @@ for i in range(iterations):
     alpha, sigma, w_RW, w_P = 0.5, 25, 0.3, .9
 
     # Predictions
-    conf_vec, p_options = P_RW_sim((alpha, sigma, w_RW, w_P),
+    conf_vec, p_options = RWP_sim((alpha, sigma, w_RW, w_P),
                                    confidence, feedback, n_trials, performance,
                                    non_linear=True)
 

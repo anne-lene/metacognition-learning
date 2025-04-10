@@ -136,8 +136,8 @@ def fit_model_with_LOO_cv(model, args, bounds, n_trials,
 
             # McFadden pseudo r2
             n_options = 101 # levels of confidence (i.e., 0,1,2... ...99,100)
-            nll_model = nll
-            nll_null = -n_trials * np.log(1 / n_options)
+            nll_model = val_nll
+            nll_null = -len(test_index) * np.log(1 / n_options)
             pseudo_r2 = 1 - (nll_model / nll_null)
 
             # AIC and BIC
@@ -173,7 +173,27 @@ def fit_model_with_cv(model, args, bounds, n_trials,
                       bias_model_best_params=False):
 
     """
-    Uses time series cross-validation
+    Uses time series cross-validation to fit a model.
+
+    Parameters:
+    - model: callable
+        A model function taking parameters and trial indices.
+    - args: tuple
+        Additional arguments passed to the model function.
+    - bounds: list of tuples
+        Bounds for each model parameter.
+    - n_trials: int
+        Total number of trials in the dataset.
+    - start_value_number: int
+        Number of random restarts for optimization.
+    - solver: str
+        Solver to use in scipy.optimize.minimize.
+    - bias_model_best_params: list or False
+        Optional parameter vector to bias the first optimization run.
+
+    Returns:
+    - averaged_result: np.array
+        Mean of best parameter vectors and metrics across folds.
     """
 
     # Normalize bounds for the optimization process
@@ -230,12 +250,13 @@ def fit_model_with_cv(model, args, bounds, n_trials,
             # Evaluate on validation data
             args_test = args + (test_index,) # Add index for test trials
             val_nll = model(best_params, *args_test)
-            #val_nll = model_wrapper(result.x, args_train)
+
 
             # McFadden pseudo r2
             n_options = 101 # levels of confidence (i.e., 0,1,2... ...99,100)
-            nll_model = nll
-            nll_null = -n_trials * np.log(1 / n_options)
+            nll_model = val_nll
+            nll_null = -len(test_index) * np.log(1 / n_options)
+
             pseudo_r2 = 1 - (nll_model / nll_null)
 
             # AIC and BIC

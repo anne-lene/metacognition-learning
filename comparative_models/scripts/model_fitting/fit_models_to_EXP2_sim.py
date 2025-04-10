@@ -19,15 +19,19 @@ from tqdm import tqdm
 from multiprocessing import Pool
 from src.model_fitting_functions import fit_model_with_cv
 from src.utils import load_sim_df
-from src.models import (RWPD,
+from src.models import (random_model,
+                        bias_model,
+                        RWFP,
                         RWP,
                         RWCK,
                         CK,
-                        RW_cond,
                         RW,
+                        RW_cond,
                         WSLS,
-                        bias_model,
-                        random_model)
+                        LMF,
+                        LMP,
+                        LMFP
+                        )
 
 # Function to process data for a single session
 def process_session(df_s):
@@ -82,7 +86,7 @@ def process_session(df_s):
 
     # Biased confidence model
     mean_bound = (0, 100)
-    sigma_bound = (1, 15)
+    sigma_bound = (1, 10)
     bounds = [(mean_bound[0], mean_bound[1]),
               (sigma_bound[0], sigma_bound[1])]
     results = fit_model_with_cv(model=bias_model,
@@ -99,7 +103,7 @@ def process_session(df_s):
     pseudo_r2_bias = results[5].item()
 
     # Win-stay-lose-shift model
-    sigma_bound = (1, 15)
+    sigma_bound = (1, 10)
     win_bound = (1, 100)
     bounds = [(sigma_bound[0], sigma_bound[1]),
               (win_bound[0], win_bound[1])]
@@ -121,7 +125,7 @@ def process_session(df_s):
 
     # Rescorla-Wagner model
     alpha_bound = (0, 1)
-    sigma_bound = (1, 15)
+    sigma_bound = (1, 10)
     bias_bound = (0, 100)
     bounds = [(alpha_bound[0], alpha_bound[1]),
               (sigma_bound[0], sigma_bound[1]),
@@ -139,11 +143,11 @@ def process_session(df_s):
     bic_rw_symm = results_rw_symm[5].item()
     pseudo_r2_rw_symm = results_rw_symm[6].item()
 
-    # Rescorla wagner Condition alpha model
+    # RW_Cond: Rescorla wagner Condition alpha model
     alpha_neut_bound = (0, 1)  # Alpha neut
     alpha_pos_bound =  (0, 1)  # Alpha pos
     alpha_neg_bound =  (0, 1)  # Alpha neg
-    sigma_bound = (1, 15)    # Standard deviation
+    sigma_bound = (1, 10)    # Standard deviation
     bias_bound = (0, 100)     # Mean at first trial
     bounds = [(alpha_neut_bound[0], alpha_neut_bound[1]),
               (alpha_pos_bound[0], alpha_pos_bound[1]),
@@ -167,9 +171,9 @@ def process_session(df_s):
     bic_rw_cond = results_rw_cond[7].item()
     pseudo_r2_rw_cond = results_rw_cond[8].item()
 
-    # Choice Kernel model
+    # CK: Choice Kernel model
     alpha_bound = (0, 1)
-    sigma_bound = (1, 15)
+    sigma_bound = (1, 10)
     bias_bound = (0, 100)
     beta_bound = (40, 200)
     bounds = [(alpha_bound[0], alpha_bound[1]),
@@ -191,11 +195,11 @@ def process_session(df_s):
     bic_ck = results_ck[6].item()
     pseudo_r2_ck = results_ck[7].item()
 
-    # RW + Choice Kernel model
+    # RWCK: Rescorla-Wagner + Choice Kernel model
     alpha_bound = (0, 1)
     alpha_ck_bound = (0, 1)
-    sigma_bound = (1, 15)
-    sigma_ck_bound = (1, 15)
+    sigma_bound = (1, 10)
+    sigma_ck_bound = (1, 10)
     bias_bound = (0, 100)
     beta_bound = (40, 200)
     beta_ck_bound = (40, 200)
@@ -212,6 +216,7 @@ def process_session(df_s):
                                      n_trials=n_trials,
                                      start_value_number=50,
                                      solver="L-BFGS-B")
+
     alpha_rwck = results_rwck[0].item()
     alpha_ck_rwck = results_rwck[1].item()
     sigma_rwck = results_rwck[2].item()
@@ -224,19 +229,17 @@ def process_session(df_s):
     bic_rwck = results_rwck[9].item()
     pseudo_r2_rwck = results_rwck[10].item()
 
-    # Rescorla-Wagner Performance model (RWP)
+    # RWP: Rescorla-Wagner Performance model
     alpha_bound = (0, 1)
-    sigma_bound = (1, 15)
+    sigma_bound = (1, 10)
     bias_bound = (0, 100)
-    w_rw_bound = (0, 1)
-    w_delta_p_bound = (0.2, 1)
-    intercept_bound = (-100, 100)
+    wp_bound = (0, 2)
+
     bounds = [(alpha_bound[0], alpha_bound[1]),
               (sigma_bound[0], sigma_bound[1]),
               (bias_bound[0], bias_bound[1]),
-              (w_rw_bound[0], w_rw_bound[1]),
-              (w_delta_p_bound[0], w_delta_p_bound[1]),
-              (intercept_bound[0], intercept_bound[1])]
+              (wp_bound[0], wp_bound[1])]
+
     results_rwp = fit_model_with_cv(model=RWP,
                                     args=(confidence,
                                           feedback,
@@ -250,26 +253,26 @@ def process_session(df_s):
     alpha_rwp = results_rwp[0].item()
     sigma_rwp = results_rwp[1].item()
     bias_rwp = results_rwp[2].item()
-    w_rw_rwp = results_rwp[3].item()
-    w_performance_rwp = results_rwp[4].item()
-    intercept_rwp = results_rwp[4].item()
-    nll_rwp = results_rwp[5].item()
-    aic_rwp = results_rwp[6].item()
-    bic_rwp = results_rwp[7].item()
-    pseudo_r2_rwp = results_rwp[8].item()
+    wp_rwp = results_rwp[3].item()
+    nll_rwp = results_rwp[4].item()
+    aic_rwp = results_rwp[5].item()
+    bic_rwp = results_rwp[6].item()
+    pseudo_r2_rwp = results_rwp[7].item()
 
-    # Rescorla-Wagner Performance Delta model (RWPD)
+    # RWFP: Rescorla-Wagner Feedback and Performance model
     alpha_bound = (0, 1)
-    sigma_bound = (1, 15)
+    sigma_bound = (1, 10)
     bias_bound = (0, 100)
-    w_rw_bound = (0, 1)
-    w_delta_p_bound = (2, 5)
+    wf_bound = (0, 2)
+    wp_bound = (0, 2)
+
     bounds = [(alpha_bound[0], alpha_bound[1]),
               (sigma_bound[0], sigma_bound[1]),
               (bias_bound[0], bias_bound[1]),
-              (w_rw_bound[0], w_rw_bound[1]),
-              (w_delta_p_bound[0], w_delta_p_bound[1])]
-    results_rwpd = fit_model_with_cv(model=RWPD,
+              (wf_bound[0], wf_bound[1]),
+              (wp_bound[0], wp_bound[1])]
+
+    results_rwfp = fit_model_with_cv(model=RWFP,
                                     args=(confidence,
                                           feedback,
                                           n_trials,
@@ -279,15 +282,112 @@ def process_session(df_s):
                                     start_value_number=50,
                                     solver="L-BFGS-B")
 
-    alpha_rwpd = results_rwpd[0].item()
-    sigma_rwpd = results_rwpd[1].item()
-    bias_rwpd = results_rwpd[2].item()
-    w_rw_rwpd = results_rwpd[3].item()
-    w_pd_rwpd = results_rwpd[4].item()
-    nll_rwpd = results_rwpd[5].item()
-    aic_rwpd = results_rwpd[6].item()
-    bic_rwpd = results_rwpd[7].item()
-    pseudo_r2_rwpd = results_rwpd[8].item()
+    alpha_rwfp = results_rwfp[0].item()
+    sigma_rwfp = results_rwfp[1].item()
+    bias_rwfp = results_rwfp[2].item()
+    wp_rwfp = results_rwfp[3].item()
+    wf_rwfp = results_rwfp[4].item()
+    nll_rwfp = results_rwfp[5].item()
+    aic_rwfp = results_rwfp[6].item()
+    bic_rwfp = results_rwfp[7].item()
+    pseudo_r2_rwfp = results_rwfp[8].item()
+
+
+    # LMF: Linear model of Feedback.
+    sigma_bound = (1, 10)
+    bias_bound = (0, 100)
+    intercept_bound = (0, 100)
+    wf_bound = (0, 2)
+
+    bounds = [(sigma_bound[0], sigma_bound[1]),
+              (bias_bound[0], bias_bound[1]),
+              (intercept_bound[0], intercept_bound[1]),
+              (wf_bound[0], wf_bound[1])]
+
+
+    results_lmf = fit_model_with_cv(model=LMF,
+                                    args=(confidence,
+                                          feedback,
+                                          n_trials,
+                                          performance),
+                                    bounds=bounds,
+                                    n_trials=n_trials,
+                                    start_value_number=50,
+                                    solver="L-BFGS-B")
+
+    sigma_lmf = results_lmf[0].item()
+    bias_lmf = results_lmf[1].item()
+    intercept_lmf = results_lmf[2].item()
+    wf_lmf = results_lmf[3].item()
+    nll_lmf = results_lmf[4].item()
+    aic_lmf = results_lmf[5].item()
+    bic_lmf = results_lmf[6].item()
+    pseudo_r2_lmf = results_lmf[7].item()
+
+    # LMP: Linear model of Performance.
+    sigma_bound = (1, 10)
+    bias_bound = (0, 100)
+    intercept_bound = (0, 100)
+    wp_bound = (0, 2)
+
+    bounds = [(sigma_bound[0], sigma_bound[1]),
+              (bias_bound[0], bias_bound[1]),
+              (intercept_bound[0], intercept_bound[1]),
+              (wp_bound[0], wp_bound[1])]
+
+
+    results_lmp = fit_model_with_cv(model=LMP,
+                                    args=(confidence,
+                                          feedback,
+                                          n_trials,
+                                          performance),
+                                    bounds=bounds,
+                                    n_trials=n_trials,
+                                    start_value_number=50,
+                                    solver="L-BFGS-B")
+
+    sigma_lmp = results_lmp[0].item()
+    bias_lmp = results_lmp[1].item()
+    intercept_lmp = results_lmp[2].item()
+    wp_lmp = results_lmp[3].item()
+    nll_lmp = results_lmp[4].item()
+    aic_lmp = results_lmp[5].item()
+    bic_lmp = results_lmp[6].item()
+    pseudo_r2_lmp = results_lmp[7].item()
+
+    # LMFP: Linear model of Feedback and Performance.
+    sigma_bound = (1, 10)
+    bias_bound = (0, 100)
+    intercept_bound = (0, 80)
+    wf_bound = (0, 1)
+    wp_bound = (0, 1)
+
+    bounds = [(sigma_bound[0], sigma_bound[1]),
+              (bias_bound[0], bias_bound[1]),
+              (intercept_bound[0], intercept_bound[1]),
+              (wf_bound[0], wf_bound[1]),
+              (wp_bound[0], wp_bound[1])]
+
+
+    results_lmfp = fit_model_with_cv(model=LMFP,
+                                    args=(confidence,
+                                          feedback,
+                                          n_trials,
+                                          performance),
+                                    bounds=bounds,
+                                    n_trials=n_trials,
+                                    start_value_number=50,
+                                    solver="L-BFGS-B")
+
+    sigma_lmfp = results_lmfp[0].item()
+    bias_lmfp = results_lmfp[1].item()
+    intercept_lmfp = results_lmfp[2].item()
+    wf_lmfp = results_lmfp[3].item()
+    wp_lmfp = results_lmfp[4].item()
+    nll_lmfp = results_lmfp[5].item()
+    aic_lmfp = results_lmfp[6].item()
+    bic_lmfp = results_lmfp[7].item()
+    pseudo_r2_lmfp = results_lmfp[8].item()
 
     # Store session metrics
     # The p at the end of the key name stands for person as each value is
@@ -352,22 +452,48 @@ def process_session(df_s):
         'alpha_rwp': alpha_rwp,
         'sigma_rwp': sigma_rwp,
         'bias_rwp': bias_rwp,
-        'w_rw_rwp': w_rw_rwp,
-        'w_performance_rwp': w_performance_rwp,
-        'intercept_rwp': intercept_rwp,
+        'wp_rwp': wp_rwp,
         'nll_rwp': nll_rwp,
         'aic_rwp': aic_rwp,
         'bic_rwp': bic_rwp,
         'pseudo_r2_rwp': pseudo_r2_rwp,
-        'alpha_rwpd': alpha_rwpd,
-        'sigma_rwpd': sigma_rwpd,
-        'bias_rwpd': bias_rwpd,
-        'w_rw_rwpd': w_rw_rwpd,
-        'w_pd_rwpd': w_pd_rwpd,
-        'nll_rwpd': nll_rwpd,
-        'aic_rwpd': aic_rwpd,
-        'bic_rwpd': bic_rwpd,
-        'pseudo_r2_rwpd': pseudo_r2_rwpd,
+        'alpha_rwfp': alpha_rwfp,
+        'sigma_rwfp': sigma_rwfp,
+        'bias_rwfp': bias_rwfp,
+        'wf_rwfp': wf_rwfp,
+        'wp_rwfp': wp_rwfp,
+        'nll_rwfp': nll_rwfp,
+        'aic_rwfp': aic_rwfp,
+        'bic_rwfp': bic_rwfp,
+        'pseudo_r2_rwfp': pseudo_r2_rwfp,
+
+        'sigma_lmf': sigma_lmf,
+        'bias_lmf': bias_lmf,
+        'intercept_lmf': intercept_lmf,
+        'wf_lmf': wf_lmf,
+        'nll_lmf': nll_lmf,
+        'aic_lmf': aic_lmf,
+        'bic_lmf': bic_lmf,
+        'pseudo_r2_lmf': pseudo_r2_lmf,
+
+        'sigma_lmp': sigma_lmp,
+        'bias_lmp': bias_lmp,
+        'intercept_lmp': intercept_lmp,
+        'wp_lmp': wp_lmp,
+        'nll_lmp': nll_lmp,
+        'aic_lmp': aic_lmp,
+        'bic_lmp': bic_lmp,
+        'pseudo_r2_lmp': pseudo_r2_lmp,
+
+        'sigma_lmfp': sigma_lmfp,
+        'bias_lmfp': bias_lmfp,
+        'intercept_lmfp': intercept_lmfp,
+        'wf_lmfp': wf_lmfp,
+        'wp_lmfp': wp_lmfp,
+        'nll_lmfp': nll_lmfp,
+        'aic_lmfp': aic_lmfp,
+        'bic_lmfp': bic_lmfp,
+        'pseudo_r2_lmfp': pseudo_r2_lmfp,
     }
 
     return pid_session_model_tuple, session_metrics
@@ -394,7 +520,7 @@ def main(df):
     num_unique_combos = len(unique_pairs_list)
     print('PIDs:', len(df['pid'].unique()))
     print('Sessions:', len(df['session'].unique()))
-    print('Model:', len(df['model'].unique()))
+    print('Models:', len(df['model'].unique()))
     print(f"Number of pid-model-session combos: {num_unique_combos}")
 
     # Initialize result dictionaries for all participants
@@ -459,22 +585,47 @@ def main(df):
         'alpha_rwp': np.zeros(num_unique_combos),
         'sigma_rwp': np.zeros(num_unique_combos),
         'bias_rwp': np.zeros(num_unique_combos),
-        'w_rw_rwp': np.zeros(num_unique_combos),
-        'w_performance_rwp': np.zeros(num_unique_combos),
-        'intercept_rwp': np.zeros(num_unique_combos),
+        'wp_rwp': np.zeros(num_unique_combos),
         'nll_rwp': np.zeros(num_unique_combos),
         'aic_rwp': np.zeros(num_unique_combos),
         'bic_rwp': np.zeros(num_unique_combos),
         'pseudo_r2_rwp': np.zeros(num_unique_combos),
-        'alpha_rwpd': np.zeros(num_unique_combos),
-        'sigma_rwpd': np.zeros(num_unique_combos),
-        'bias_rwpd': np.zeros(num_unique_combos),
-        'w_rw_rwpd': np.zeros(num_unique_combos),
-        'w_pd_rwpd': np.zeros(num_unique_combos),
-        'nll_rwpd': np.zeros(num_unique_combos),
-        'aic_rwpd': np.zeros(num_unique_combos),
-        'bic_rwpd': np.zeros(num_unique_combos),
-        'pseudo_r2_rwpd': np.zeros(num_unique_combos),
+        'alpha_rwfp': np.zeros(num_unique_combos),
+        'sigma_rwfp': np.zeros(num_unique_combos),
+        'bias_rwfp': np.zeros(num_unique_combos),
+        'wf_rwfp': np.zeros(num_unique_combos),
+        'wp_rwfp': np.zeros(num_unique_combos),
+        'nll_rwfp': np.zeros(num_unique_combos),
+        'aic_rwfp': np.zeros(num_unique_combos),
+        'bic_rwfp': np.zeros(num_unique_combos),
+        'pseudo_r2_rwfp': np.zeros(num_unique_combos),
+        'sigma_lmf': np.zeros(num_unique_combos),
+        'bias_lmf': np.zeros(num_unique_combos),
+        'intercept_lmf': np.zeros(num_unique_combos),
+        'wf_lmf': np.zeros(num_unique_combos),
+        'nll_lmf': np.zeros(num_unique_combos),
+        'aic_lmf': np.zeros(num_unique_combos),
+        'bic_lmf': np.zeros(num_unique_combos),
+        'pseudo_r2_lmf': np.zeros(num_unique_combos),
+
+        'sigma_lmp': np.zeros(num_unique_combos),
+        'bias_lmp': np.zeros(num_unique_combos),
+        'intercept_lmp': np.zeros(num_unique_combos),
+        'wp_lmp': np.zeros(num_unique_combos),
+        'nll_lmp': np.zeros(num_unique_combos),
+        'aic_lmp': np.zeros(num_unique_combos),
+        'bic_lmp': np.zeros(num_unique_combos),
+        'pseudo_r2_lmp': np.zeros(num_unique_combos),
+
+        'sigma_lmfp':  np.zeros(num_unique_combos),
+        'bias_lmfp':  np.zeros(num_unique_combos),
+        'intercept_lmfp': np.zeros(num_unique_combos),
+        'wf_lmfp': np.zeros(num_unique_combos),
+        'wp_lmfp': np.zeros(num_unique_combos),
+        'nll_lmfp': np.zeros(num_unique_combos),
+        'aic_lmfp': np.zeros(num_unique_combos),
+        'bic_lmfp': np.zeros(num_unique_combos),
+        'pseudo_r2_lmfp': np.zeros(num_unique_combos),
     }
 
     # Use multiprocessing to process each participant in parallel
@@ -505,7 +656,7 @@ def main(df):
 
     # Construct the full path to the file
     file_path = os.path.normpath(os.path.join(script_dir, relative_path))
-    file_name = r"model_fits_EXP2_sim_test"
+    file_name = r"model_fits_EXP2_sim"
     save_path = os.path.join(relative_path, file_path, file_name)
 
     # Construct and save dataframe

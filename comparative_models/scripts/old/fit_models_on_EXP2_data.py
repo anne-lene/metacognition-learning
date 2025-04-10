@@ -5,7 +5,7 @@ Created on Sun Sep  1 19:22:35 2024
 @author: carll
 """
 
-# Fit models to Experiment 2 - Fixed Feedback
+# Fit models to Experiment 2 - Variable Feedback
 import numpy as np
 import pandas as pd
 from tqdm import tqdm
@@ -16,6 +16,7 @@ from scipy.optimize import minimize
 import math
 from scipy.ndimage import gaussian_filter1d
 from sklearn.model_selection import KFold
+from sklearn.model_selection import LeaveOneOut
 
 #----------------------------------------------------------------------------
 # Utility functions
@@ -50,110 +51,74 @@ def add_session_column(df, condition_col='condition'):
 
     return df_copy
 
-
-def create_truncated_normal(mean, sd, lower_bound=0, upper_bound=100):
+def calc_norm_prob_vectorized(confidence, mean, sigma,
+                              lower_bound=0, upper_bound=100):
     """
-    Creates a truncated normal distribution within specified bounds.
-
-    This function generates a truncated normal distribution with a given mean
-    and standard deviation, truncated within specified lower and upper bounds.
-    The distribution is truncated so that values lie within the given range,
-    ensuring the integral of the distribution's probability density function
-    is 1 within these bounds.
+    Calculate the probability of confidence values given a normal distribution
+    with corresponding mean and sigma values for each point. Ensure that the
+    probability density values for integer steps between lower_bound and upper_bound
+    sum to 1 for each distribution, using vectorized operations.
 
     Parameters:
-    mean (float): The mean of the normal distribution.
-    sd (float): The standard deviation of the normal distribution.
-    lower_bound (float, optional): The lower boundary for truncation of the
-                                   normal distribution. Default is 0.
-    upper_bound (float, optional): The upper boundary for truncation of the
-                                   normal distribution. Default is 100.
+    confidence (array): List or array of confidence values.
+    mean (array): List or array of mean values corresponding to each confidence value.
+    sigma (array): List or array of standard deviation values corresponding to each confidence value.
+    lower_bound (int): The lower bound for the range of values to normalize over (default 0).
+    upper_bound (int): The upper bound for the range of values to normalize over (default 100).
 
     Returns:
-    scipy.stats.rv_continuous: A truncated normal continuous random variable
-                               object as defined in scipy.stats.
-
-    Note:
-    The function adjusts the bounds to the standard normal distribution's
-    z-scores before creating the truncated distribution. This distribution
-    can be used to generate random variates and to compute various statistics.
+    numpy.ndarray: An array of probabilities for each confidence[i] based on
+                   the normalized normal distribution defined by mean[i] and sigma[i].
     """
 
-    # Convert the bounds to z-scores
-    lower_bound_z = (lower_bound - mean) / sd
-    upper_bound_z = (upper_bound - mean) / sd
+    # Create an array of integer steps [lower_bound, upper_bound] for all distributions
+    x_values = np.arange(lower_bound, upper_bound + 1)
 
-    # Create the truncated normal distribution
-    return truncnorm(lower_bound_z, upper_bound_z, loc=mean, scale=sd)
+    # Reshape mean and sigma to broadcast across x_values (for element-wise operations)
+    mean = mean[:, np.newaxis]
+    sigma = sigma[:, np.newaxis]
 
-def invert_normal_distribution(probabilities):
+    # Compute the Gaussian probability for each x_value, mean, and sigma (vectorized)
+    y_values = (1 / (sigma * np.sqrt(2 * np.pi))) * np.exp(-0.5 * ((x_values - mean) / sigma) ** 2)
 
-    """
-    Inverts a probability distribution and normalizes the sum to 1.
+    # Normalize each distribution by dividing each by the sum of the distribution
+    y_values /= np.sum(y_values, axis=1, keepdims=True)
 
-    This function inverts each probability value in a given probability
-    distribution relative to the maximum probability, then normalizes the
-    resulting values. The sum of the inverted distribution is maintained at 1.
-    This process reflects the distribution around its maximum value, useful
-    for creating complementary probability distributions.
+    # Ensure confidence is an array of integers
+    confidence = confidence.astype(int)
 
-    Parameters:
-    probabilities (array-like): An array representing a probability
-                                distribution.
+    # Extract probabilities for the confidence values (vectorized)
+    probabilities = y_values[np.arange(len(confidence)), confidence - lower_bound]
 
-    Returns:
-    array-like: An array representing the inverted and normalized
-                distribution.
+    return probabilities, y_values
 
-    Note:
-    Inversion is relative to the maximum value in the input distribution.
-    For a distribution with a highest probability P, each probability p is
-    inverted as (P - p). The values are then normalized to ensure their sum
-    is 1, retaining the characteristics of a probability distribution.
-    """
+def calc_inverted_norm_prob_vectorized(confidence, mean, sigma,
+                                       lower_bound=0, upper_bound=100):
+    """Same function as above, but now returns the
+    inverted and normalized y_values"""
+    # Create an array of integer steps
+    x_values = np.arange(lower_bound, upper_bound + 1)
 
-    # Find the maximum probability
-    max_prob = np.max(probabilities)
-    # Invert the probabilities
-    inverted = max_prob - probabilities
-    # Normalize the inverted probabilities
-    normalized_inverted = inverted / np.sum(inverted)
+    # Reshape mean and sigma to broadcast across x_values
+    mean = mean[:, np.newaxis]
+    sigma = sigma[:, np.newaxis]
 
-    return normalized_inverted
+    # Compute the Gaussian
+    y_values = (1 / (sigma * np.sqrt(2 * np.pi))) * np.exp(-0.5 * ((x_values - mean) / sigma) ** 2)
 
+    # Invert
+    y_values = np.max(y_values, axis=1, keepdims=True) - y_values
 
-def create_probability_distribution(options=[1, 2, 3],
-                                    mean_option=50,
-                                    sigma=10):
-    """
-    Create a normalized probability distribution using a normal (Gaussian)
-    distribution for a specified set of options. This distribution is
-    centered around a chosen option (mean_option) with a designated
-    standard deviation (sigma). It's ideal for scenarios where the
-    likelihood of certain options varies based on their closeness to
-    mean_option.
+    # Normalize
+    y_values /= np.sum(y_values, axis=1, keepdims=True)
 
-    Parameters:
-    options: A list or array of options to calculate probabilities for
-             (default [1,2,3]).
-    mean_option: The central value (mean) of the normal distribution
-                 (default 50).
-    sigma: Standard deviation, determining the distribution's spread
-           (default 10).
-    Returns:
-    An array of probabilities for each option, reflecting the normalized
-    normal distribution for these options.
-    """
+    # Ensure confidence is an array of integers
+    confidence = confidence.astype(int)
 
-    # Creating a normal distribution around the mean with normalization factor
-    factor = 1 / (sigma * np.sqrt(2 * np.pi))
-    probabilities = factor * np.exp(-0.5 * ((options - mean_option) / sigma)
-                                    ** 2)
+    # Extract probabilities for the confidence values
+    probabilities = y_values[np.arange(len(confidence)), confidence - lower_bound]
 
-    # Normalize the distribution so that the sum of probabilities equals 1
-    probabilities /= probabilities.sum()
-
-    return probabilities
+    return probabilities, y_values
 
 #----------------------------------------------------------------------------
 # Models
@@ -168,12 +133,14 @@ def delta_P_RW_trial (x, *args):
     return list of vectors
     """
 
-    alpha, sigma, bias, w_RW, w_Delta_P = x
+    alpha, sigma, bias, w_RW, w_PD = x
     confidence, feedback, n_trials, performance = args
 
     sigma_vec = np.full(n_trials, sigma)  # vector for standard deviation
     model_pred = np.zeros(n_trials)
     c_rw = np.zeros(n_trials)
+    # Small value to avoid division by 0
+    epsilon = 1e-10
     for t in range(n_trials):
 
         if t == 0:
@@ -184,17 +151,9 @@ def delta_P_RW_trial (x, *args):
 
         else:
 
-            # If concatenating sessions...
-            # ...reset c at new session
-            if t == 20 or t == 40:
-                c = bias
-            else:
-                c = int(c_rw[t-1])
-
-
             # Get previous confidence value and feedback,
             f = feedback[t-1]
-           # c = int(confidence[t-1])
+            c = int(c_rw[t-1])
 
             PE = f - c  # Prediction error
             c_rw[t] = c + alpha*PE  # Update rule
@@ -203,28 +162,26 @@ def delta_P_RW_trial (x, *args):
             c_rw[t] = max(0, min(100, c_rw[t]))
 
             # Get delta performance
-            delta_p = performance[t] - performance[t-1]
+            #delta_p = performance[t] - performance[t-1]
 
-            # Encure delta_p is between 0 and 100.
-            delta_p = max(0, min(100, delta_p))
+            # Encure delta_p is between -100 and 100.
+            #delta_p = max(-100, min(100, delta_p))
 
-            # Get the prediction as the weighted sum
-            model_pred[t] = (w_RW*c_rw[t]) + (w_Delta_P*delta_p)
+            # Get performance influence
+            c_P =  max(0, min(100, w_PD*performance[t] + 100))
 
-    # Small value to avoid division by 0
-    epsilon = 1e-10
+            model_pred[t] = max(0, min(100, int((w_RW*c_rw[t]) + (w_PD*c_P))))
 
     # Remove initial baseline trial
     model_pred = model_pred[1:]
     sigma_vec = sigma_vec[1:]
     confidence = confidence[1:]
 
-    # Get NLLs from truncated probability distribution
-    nlls = -np.log(create_truncated_normal(model_pred,  # ignore first trial
-                                           sigma_vec,
-                                           lower_bound=0,
-                                           upper_bound=100).pdf(confidence)
-                   + epsilon)
+    # Calculate probabilities and Negative log likelihood (NLL)
+    probabilities, y_values = calc_norm_prob_vectorized(confidence,
+                                                        model_pred,
+                                                        sigma_vec)
+    nlls = -np.log(probabilities + epsilon)
 
     return [nlls, model_pred, sigma_vec, confidence]
 
@@ -242,6 +199,8 @@ def delta_P_RW (x, *args):
     sigma_vec = np.full(n_trials, sigma)  # vector for standard deviation
     model_pred = np.zeros(n_trials)
     c_rw = np.zeros(n_trials)
+    # Small value to avoid division by 0
+    epsilon = 1e-10
     for t in range(n_trials):
 
         if t == 0:
@@ -250,16 +209,9 @@ def delta_P_RW (x, *args):
             model_pred[t] = bias
             c_rw[t] = bias
         else:
-
-            # If concatenating sessions...
-            # ...reset confidence estimate at new session
-            if t == 20 or t == 40:
-                c = bias
-            else:
-                c = int(c_rw[t-1])
-
-            # Get previous feedback,
+            # Get previous feedback (f) and confidence estimate (c)
             f = feedback[t-1]
+            c = int(c_rw[t-1])
 
             PE = f - c  # Prediction error
             c_rw[t] = c + alpha*PE  # Update rule
@@ -268,28 +220,26 @@ def delta_P_RW (x, *args):
             c_rw[t] = max(0, min(100, c_rw[t]))
 
             # Get performance delta
-            delta_p = performance[t] - performance[t-1]
+            #delta_p = performance[t] - performance[t-1]
 
             # Encure delta_p is between -100 and 100.
-            delta_p = max(-100, min(100, delta_p))
+            #delta_p = max(-100, min(100, delta_p))
 
-            # Get the prediction as the weighted sum
-            model_pred[t] = (w_RW*c_rw[t]) + (w_PD*delta_p)
+            # Get performance influence
+            c_P =  max(0, min(100, w_PD*performance[t] + 100))
 
-    # Small value to avoid division by 0
-    epsilon = 1e-10
+            model_pred[t] = max(0, min(100, int((w_RW*c_rw[t]) + (w_PD*c_P))))
 
     # Remove initial baseline trial
     model_pred = model_pred[1:]
     sigma_vec = sigma_vec[1:]
     confidence = confidence[1:]
 
-    # Get NLLs from truncated probability distribution
-    nlls = -np.log(create_truncated_normal(model_pred,  # ignore first trial
-                                           sigma_vec,
-                                           lower_bound=0,
-                                           upper_bound=100).pdf(confidence)
-                   + epsilon)
+    # Calculate probabilities and Negative log likelihood (NLL)
+    probabilities, y_values = calc_norm_prob_vectorized(confidence,
+                                                        model_pred,
+                                                        sigma_vec)
+    nlls = -np.log(probabilities + epsilon)
 
     return np.sum(nlls[trial_index])
 
@@ -325,7 +275,7 @@ def RW_choice_kernel_trial(x, *args):
        measure of model fit to the observed data.
     """
 
-    alpha, alpha_ck, sigma, bias, beta, beta_ck = x
+    alpha, alpha_ck, sigma, sigma_ck, bias, beta, beta_ck = x
     feedback, confidence, n_trials = args
 
     array_length = 101
@@ -334,7 +284,8 @@ def RW_choice_kernel_trial(x, *args):
     nlls = np.zeros(n_trials)
     model_pred = np.zeros(n_trials)
     model_probs = []
-
+    # Small value to avoid division by 0
+    epsilon = 1e-10
     for t in range(n_trials):
 
         if t == 0:
@@ -360,17 +311,10 @@ def RW_choice_kernel_trial(x, *args):
 
         if t > 0:
 
-            # If concatenating sessions...
-            # ...reset choice kernels and c_pred at new session
-            if t == 20 or t == 40:
-                choice_kernels = np.full(array_length, value)
-                c = bias
-            else:
-                c = model_pred[t-1]
-
             # Update confidence according to RW updates -----------------------
-            # Get previous confidence value and feedback,
+            # Get previous confidence estimate and feedback
             f = feedback[t-1]
+            c = model_pred[t-1]
 
             PE = f - c  # Prediction error
             c_pred = c + alpha*PE  # Update rule
@@ -378,13 +322,14 @@ def RW_choice_kernel_trial(x, *args):
             # Encure c_pred is between 0 and 100.
             c_pred = max(0, min(100, c_pred))
 
-            # Get option probs from truncated normal distribution
-            options = np.arange(0,101, 1)
-            p_options = create_truncated_normal(np.array([c_pred]),
-                                                np.array([sigma]),
-                                                lower_bound=0,
-                                                upper_bound=100).pdf(options)
-            # -----------------------------------------------------------
+            # Calculate probabilities across different options (p_options)
+            probability, p_options = calc_norm_prob_vectorized(
+                                                    np.array([confidence[t]]),
+                                                    np.array([c_pred]),
+                                                    np.array([sigma]),
+                                                    lower_bound=0,
+                                                    upper_bound=100)
+            # -----------------------------------------------------------------
             # Update choice kernels
             for k in range(101):
 
@@ -393,11 +338,13 @@ def RW_choice_kernel_trial(x, *args):
                 choice_kernels[k] += alpha_ck * (a_k_t - choice_kernels[k])
 
             # Gaussian smooting
-            smoothed_choice_kernels = gaussian_filter1d(choice_kernels, sigma)
+            smoothed_choice_kernels = gaussian_filter1d(choice_kernels,
+                                                        sigma_ck)
+
             # -----------------------------------------------------------
             # Combine RW update and CK update
-            p = np.zeros(len(p_options))
-            for i, (v_k, ck_k) in enumerate(zip(p_options,
+            p = np.zeros(len(p_options[0]))
+            for i, (v_k, ck_k) in enumerate(zip(p_options[0],
                                                 smoothed_choice_kernels)):
 
                 # Exponential of each beta * value + beta + choice kernel
@@ -408,9 +355,9 @@ def RW_choice_kernel_trial(x, *args):
             model_probs.append(probabilities)
 
             # Get nll
-            nlls[t] = -np.log(probabilities[int(confidence[t])])
+            nlls[t] = -np.log(probabilities[int(confidence[t])] + epsilon)
 
-    # Remove initial baseline trial
+    # Remove initial trial when the bias was applied
     nlls = nlls[1:]
     confidence = confidence[1:]
     sigma_vec = np.full(len(nlls), sigma)
@@ -450,7 +397,7 @@ def RW_choice_kernel(x, *args):
        measure of model fit to the observed data.
     """
 
-    alpha, alpha_ck, sigma, bias, beta, beta_ck = x
+    alpha, alpha_ck, sigma, sigma_ck, bias, beta, beta_ck = x
     feedback, confidence, n_trials, trial_index = args
 
     array_length = 101
@@ -458,6 +405,8 @@ def RW_choice_kernel(x, *args):
     choice_kernels = np.full(array_length, value)
     nlls = np.zeros(n_trials)
     model_pred = np.zeros(n_trials)
+    # Small value to avoid division by 0
+    epsilon = 1e-10
     for t in range(n_trials):
 
         if t == 0:
@@ -478,20 +427,11 @@ def RW_choice_kernel(x, *args):
             nlls[t] = -np.log(probabilities[int(confidence[t])])
 
         if t > 0:
-
-            # If concatenating sessions...
-            # ...reset choice kernels and c_pred at new session
-            if t == 20 or t == 40:
-                choice_kernels = np.full(array_length, value)
-                c = bias
-            else:
-                c = model_pred[t-1]
             # Update "value" --------------------------------------------
 
             # Get previous confidence value and feedback,
             f = feedback[t-1]
-            #c = int(confidence[t-1])
-
+            c = model_pred[t-1]
 
             PE = f - c  # Prediction error
             c_pred = c + alpha*PE  # Update rule
@@ -500,12 +440,13 @@ def RW_choice_kernel(x, *args):
             c_pred = max(0, min(100, c_pred))
             model_pred[t] = c_pred
 
-            # Get option probs from truncated normal distribution
-            options = np.arange(0,101, 1)
-            p_options = create_truncated_normal(np.array([c_pred]),
-                                                np.array([sigma]),
-                                                lower_bound=0,
-                                                upper_bound=100).pdf(options)
+            # Calculate probabilities across different options (p_options)
+            probability, p_options = calc_norm_prob_vectorized(
+                                                    np.array([confidence[t]]),
+                                                    np.array([c_pred]),
+                                                    np.array([sigma]),
+                                                    lower_bound=0,
+                                                    upper_bound=100)
 
             # -----------------------------------------------------------
 
@@ -517,13 +458,14 @@ def RW_choice_kernel(x, *args):
                 choice_kernels[k] += alpha_ck * (a_k_t - choice_kernels[k])
 
             # Gaussian smooting
-            smoothed_choice_kernels = gaussian_filter1d(choice_kernels, sigma)
+            smoothed_choice_kernels = gaussian_filter1d(choice_kernels,
+                                                        sigma_ck)
 
             # -----------------------------------------------------------
 
             # Combine RW update and CK update
-            p = np.zeros(len(p_options))
-            for i, (v_k, ck_k) in enumerate(zip(p_options,
+            p = np.zeros(len(p_options[0]))
+            for i, (v_k, ck_k) in enumerate(zip(p_options[0],
                                                 smoothed_choice_kernels)):
 
                 # Exponential of each beta * value + beta + choice kernel
@@ -533,9 +475,9 @@ def RW_choice_kernel(x, *args):
             probabilities = p / np.sum(p)
 
             # Get nll
-            nlls[t] = -np.log(probabilities[int(confidence[t])])
+            nlls[t] = -np.log(probabilities[int(confidence[t])] + epsilon)
 
-    # Remove initial baseline trial
+    # Remove initial trial
     nlls = nlls[1:]
 
     return np.sum(nlls[trial_index])
@@ -580,6 +522,8 @@ def choice_kernel_trial(x, *args):
     nlls = np.zeros(n_trials)
     model_pred = np.zeros(n_trials)
     model_probs = []
+    # Small value to avoid division by 0
+    epsilon = 1e-10
     for t in range(n_trials):
 
         if t == 0:
@@ -602,13 +546,9 @@ def choice_kernel_trial(x, *args):
             model_probs.append(probabilities)
 
             # Add to nll vector
-            nlls[t] = -np.log(probabilities[int(confidence[t])])
+            nlls[t] = -np.log(probabilities[int(confidence[t])] + epsilon)
 
         if t > 0:
-
-            # If concatenating sessions, reset choice kernels at new session
-            if t == 20 or t == 40:
-                choice_kernels = np.full(array_length, value)
 
             # Get previous confidence value,
             c = int(confidence[t-1])
@@ -631,12 +571,13 @@ def choice_kernel_trial(x, *args):
             model_probs.append(probabilities)
 
             # Get nll
-            nlls[t] = -np.log(probabilities[int(confidence[t])])
+            nlls[t] = -np.log(probabilities[int(confidence[t])] + epsilon)
 
-    # Remove initial baseline trial
+    # Remove initial trial
     nlls = nlls[1:]
     model_pred = model_pred[1:]
     model_probs = model_probs[1:]
+    confidence = confidence[1:]
 
     # Sigma always the same
     sigma_vec = np.full(len(nlls), sigma)
@@ -681,6 +622,10 @@ def choice_kernel(x, *args):
     value = 1 / array_length
     choice_kernels = np.full(array_length, value)
     nlls = np.zeros(n_trials)
+
+    # Small value to avoid division by 0
+    epsilon = 1e-10
+
     for t in range(n_trials):
 
         if t == 0:
@@ -698,13 +643,9 @@ def choice_kernel(x, *args):
             probabilities = t1_probs / np.sum(t1_probs)
 
             # Add to nll vector
-            nlls[t] = -np.log(probabilities[int(confidence[t])])
+            nlls[t] = -np.log(probabilities[int(confidence[t])] + epsilon)
 
         if t > 0:
-
-            # If concatenating sessions, reset choice kernels at new session
-            if t == 20 or t == 40:
-                choice_kernels = np.full(array_length, value)
 
             # Get previous confidence value
             c = int(confidence[t-1])
@@ -726,13 +667,12 @@ def choice_kernel(x, *args):
             probabilities = exp_choice_kernels / np.sum(exp_choice_kernels)
 
             # Get nll
-            nlls[t] = -np.log(probabilities[int(confidence[t])])
+            nlls[t] = -np.log(probabilities[int(confidence[t])] + epsilon)
 
     # Remove initial trial
     nlls = nlls[1:]
 
     return np.sum(nlls[trial_index])
-
 
 
 def rw_cond_LR_trial(x, *args):
@@ -796,16 +736,19 @@ def rw_cond_LR_trial(x, *args):
     epsilon = 1e-10
 
     # Remove initial trial
+    confidence = confidence[1:]
     model_pred = model_pred[1:]
     sigma_vec = sigma_vec[1:]
-    confidence = confidence[1:]
 
-    # Get NLLs from truncated probability distribution
-    nlls = -np.log(create_truncated_normal(model_pred,
-                                           sigma_vec,
-                                           lower_bound=0,
-                                           upper_bound=100).pdf(confidence)
-                   + epsilon)
+    # Calculate model prediction probabilities (probability)
+    # and probability across all options (p_options)
+    probability, p_options = calc_norm_prob_vectorized(confidence,
+                                                       model_pred,
+                                                       sigma_vec,
+                                                       lower_bound=0,
+                                                       upper_bound=100)
+    # Get nll
+    nlls = -np.log(probability + epsilon)
 
     return [nlls, model_pred, sigma_vec, confidence]
 
@@ -876,12 +819,11 @@ def rw_cond_LR(x, *args):
     sigma_vec = sigma_vec[1:]
     confidence = confidence[1:]
 
-    # Get NLLs from truncated probability distribution
-    nlls = -np.log(create_truncated_normal(model_pred,  # ignore first trial
-                                           sigma_vec,
-                                           lower_bound=0,
-                                           upper_bound=100).pdf(confidence)
-                   + epsilon)
+    # Calculate probabilities and Negative log likelihood (NLL)
+    probabilities, y_values = calc_norm_prob_vectorized(confidence,
+                                                        model_pred,
+                                                        sigma_vec)
+    nlls = -np.log(probabilities + epsilon)
 
     return np.sum(nlls[trial_index])
 
@@ -942,12 +884,11 @@ def rw_symmetric_LR_trial(x, *args):
     sigma_vec = sigma_vec[1:]
     confidence = confidence[1:]
 
-    # Get NLLs from truncated probability distribution
-    nlls = -np.log(create_truncated_normal(model_pred,
-                                           sigma_vec,
-                                           lower_bound=0,
-                                           upper_bound=100).pdf(confidence)
-                   + epsilon)
+    # Calculate probabilities and Negative log likelihood (NLL)
+    probabilities, y_values = calc_norm_prob_vectorized(confidence,
+                                                        model_pred,
+                                                        sigma_vec)
+    nlls = -np.log(probabilities + epsilon)
 
     return [nlls, model_pred, sigma_vec, confidence]
 
@@ -1017,12 +958,11 @@ def rw_symmetric_LR(x, *args):
     sigma_vec = sigma_vec[1:]
     confidence = confidence[1:]
 
-    # Get NLLs from truncated probability distribution
-    nlls = -np.log(create_truncated_normal(model_pred,  # ignore first trial
-                                           sigma_vec,
-                                           lower_bound=0,
-                                           upper_bound=100).pdf(confidence)
-                   + epsilon)
+    # Calculate probabilities and Negative log likelihood (NLL)
+    probabilities, y_values = calc_norm_prob_vectorized(confidence,
+                                                        model_pred,
+                                                        sigma_vec)
+    nlls = -np.log(probabilities + epsilon)
 
     return np.sum(nlls[trial_index])
 
@@ -1078,29 +1018,29 @@ def win_stay_lose_shift_trial(x, *args):
 
             if f > lower_bound and f < upper_bound:  # win-trial
 
-                # Get option probabilities
-                prob_distribution = create_probability_distribution(options,
-                                                                    c,
-                                                                    sigma)
+                # Calculate probability of prediction c (p_pred)
+                # and the probabilities of all options  (p_dist)
+                p_pred, p_dist = calc_norm_prob_vectorized(
+                                                    np.array([confidence[t]]),
+                                                    np.array([c]),
+                                                    np.array([sigma]))
 
-                prob_dists.append(prob_distribution)
+                prob_dists.append(p_dist)
+
             else:  # lose-trial
 
-                # Get probability function
-                prob_dist = create_probability_distribution(options,
-                                                            c,
-                                                            sigma)
+                # Calculate probabilities and Negative log likelihood (NLL)
+                p_pred, p_dist = calc_inverted_norm_prob_vectorized(
+                                                    np.array([confidence[t]]),
+                                                    np.array([c]),
+                                                    np.array([sigma]))
 
-                # inverted distribution
-                prob_distribution = invert_normal_distribution(prob_dist)
-                prob_dists.append(prob_distribution)
+                prob_dists.append(p_dist)
 
             # Get negative log likelihood of reported confidence
-            log_likelihood = np.log(prob_distribution[confidence[t]]
-                                    + epsilon)
-            nll_vector[t] = -log_likelihood
+            nll_vector[t] = -np.log(p_dist[0][int(confidence[t])] + epsilon)
 
-    # remove baseline
+    # Remove first trial
     nll_vector = nll_vector[1:]
     confidence = confidence[1:]
 
@@ -1136,12 +1076,12 @@ def win_stay_lose_shift(x, *args):
     sigma, win_boundary = x
     confidence, feedback, n_trials, trial_index = args
 
-    options = np.linspace(0, 100, 100+1)
+    options = np.linspace(0, 100, 101)
     nll_vector = np.zeros(n_trials)
-
+    epsilon = 1e-10
     for t in range(n_trials):
 
-        epsilon = 1e-10
+
         if t == 0:  # first trial, only included to index previous c and f.
             continue
         else:
@@ -1153,27 +1093,25 @@ def win_stay_lose_shift(x, *args):
             upper_bound = c + win_boundary
             lower_bound = c - win_boundary
 
-            if f > lower_bound and f < upper_bound:  # Win-trial
+            if f > lower_bound and f < upper_bound:  # win-trial
 
-                # Get option probabilities
-                prob_distribution = create_probability_distribution(options,
-                                                                    c,
-                                                                    sigma)
+                # Calculate probability of prediction c (p_pred)
+                # and the probabilities of all options  (p_dist)
+                p_pred, p_dist = calc_norm_prob_vectorized(
+                                                    np.array([confidence[t]]),
+                                                    np.array([c]),
+                                                    np.array([sigma]))
 
-            else:  # Lose-trial
+            else:  # lose-trial
 
-                # Get probability function
-                prob_dist = create_probability_distribution(options,
-                                                            c,
-                                                            sigma)
+                # Calculate probabilities and Negative log likelihood (NLL)
+                p_pred, p_dist = calc_inverted_norm_prob_vectorized(
+                                                    np.array([confidence[t]]),
+                                                    np.array([c]),
+                                                    np.array([sigma]))
 
-                # Inverted distribution
-                prob_distribution = invert_normal_distribution(prob_dist)
-
-            # Get negative log likelihood of confidence
-            log_likelihood = np.log(prob_distribution[int(confidence[t])]
-                                    + epsilon)
-            nll_vector[t] = -log_likelihood
+            # Get negative log likelihood of reported confidence
+            nll_vector[t] = -np.log(p_dist[0][int(confidence[t])] + epsilon)
 
     # Remove first trial in session
     nll_vector = nll_vector[1:]
@@ -1210,26 +1148,28 @@ def random_model_w_bias_trial(x, *args):
     mean_option, sigma = x
     confidence, n_trials = args
 
-    options = np.linspace(0, 100, 100+1)
+    options = np.linspace(0, 100, 101)
     nll_vector = np.zeros(n_trials)
     prob_dists = []
+    epsilon = 1e-10
     for t in range(n_trials):
-        if t == 0:  # First trial, nll not included for this trial
-            continue
-        else:
-            # Probability distribution
-            prob_distribution = create_probability_distribution(options,
-                                                                mean_option,
-                                                                sigma=sigma)
-            prob_dists.append(prob_distribution)
 
-            # Get current confidence score
-            c = int(confidence[t])
+        if t == 0:  # First trial, nll not included for this trial
+
+            continue
+
+        else:
+
+            # Calculate probabilities and Negative log likelihood (NLL)
+            p_pred, p_dist = calc_inverted_norm_prob_vectorized(
+                                                        np.array([confidence[t]]),
+                                                        np.array([mean_option]),
+                                                        np.array([sigma]))
+
+            prob_dists.append(p_dist)
 
             # Get negative log likelihood of choosing that confidence
-            epsilon = 1e-10
-            log_likelihood = np.log(prob_distribution[c] + epsilon)
-            nll_vector[t] = -log_likelihood
+            nll_vector[t] = -np.log(p_dist[0][int(confidence[t])] + epsilon)
 
     # remove baseline
     nll_vector = nll_vector[1:]
@@ -1269,28 +1209,23 @@ def random_model_w_bias(x, *args):
     mean_option, sigma = x
     confidence, n_trials, trial_index = args
 
-    options = np.linspace(0, 100, 100+1)
+    options = np.linspace(0, 100, 101)
     nll_vector = np.zeros(n_trials)
+    epsilon = 1e-10
     for t in range(n_trials):
 
         if t == 0:  # first trial, only included to index passed c and f.
             continue
         else:
 
-            # Probability distribution
-            # Get option probabilities
-            prob_distribution = create_probability_distribution(options,
-                                                                mean_option,
-                                                                sigma=sigma)
-
-            # Get current confidence score
-            c = int(confidence[t])
+            # Calculate probabilities and Negative log likelihood (NLL)
+            p_pred, p_dist = calc_norm_prob_vectorized(
+                                                        np.array([confidence[t]]),
+                                                        np.array([mean_option]),
+                                                        np.array([sigma]))
 
             # Get negative log likelihood of choosing that confidence
-            epsilon = 1e-10
-            log_likelihood = np.log(prob_distribution[c] + epsilon)
-            nll_vector[t] = -log_likelihood
-
+            nll_vector[t] = -np.log(p_dist[0][int(confidence[t])] + epsilon)
 
     nll_vector = nll_vector[1:]
 
@@ -1437,33 +1372,128 @@ def fit_model(model, args, bounds, n_trials, start_value_number=10,
     best_result = result_list[best_result_index]
 
     return best_result
+# =============================================================================
+#
+# def fit_model_with_cv(model, args, bounds, n_trials, k_folds=5,
+#                       start_value_number=10,
+#                       solver="L-BFGS-B",
+#                       bias_model_best_params=False):
+#
+#     # Normalize bounds for the optimization process
+#     norm_bounds = [(0, 1) for _ in bounds]
+#
+#     # K-Fold Cross-Validation setup
+#     kf = KFold(n_splits=k_folds, shuffle=True)
+#
+#     # Placeholder for cross-validation results
+#     cv_results = []
+#
+# # =============================================================================
+# #     # Adjust n trials considering first trials of session is discounted
+# #     if n_trials <= 20:
+# #         n_adjust = 1
+# #     if n_trials > 20: # if two sessions are concatenated
+# #         n_adjust = 2
+# #     if n_trials > 40: # if three sessions are concatenated
+# #         n_adjust = 3
+# # =============================================================================
+#
+#     n_adjust = 1 # Remove first trial in session.
+#     for train_index, test_index in kf.split(np.arange(n_trials-n_adjust)):
+#
+#         # Wrap model function to inverse normalize parameters before evaluation
+#         def model_wrapper(norm_params, *args):
+#             params = inverse_normalize(norm_params, bounds)
+#             return model(params, *args) # Returns model function
+#
+#         # Generate normalized start values
+#         start_ranges = []
+#         for bound in norm_bounds:
+#             lower_bound, upper_bound = bound
+#             start_range = np.random.uniform(lower_bound, upper_bound,
+#                                             size=start_value_number)
+#             start_ranges.append(start_range)
+#
+#         # Optimization process
+#         result_list = []
+#         nll_list = []
+#         for i, norm_start_values in enumerate(zip(*start_ranges)):
+#             # Use best bias params for first run
+#             if i == 0 and bias_model_best_params != False:
+#                 norm_start_values = bias_model_best_params
+#
+#             # Fit model to data
+#             args_train = args + (train_index,) # Add index for trails used for training
+#             result = minimize(model_wrapper, norm_start_values,
+#                               args=args_train, bounds=norm_bounds,
+#                               method=solver)
+#
+#             # Inverse normalize optimized parameters
+#             # to get them back in their original scale
+#             best_params = inverse_normalize(result.x, bounds)
+#             nll = result.fun
+#
+#             # Evaluate on validation data
+#             args_test = args + (test_index,) # Add index for trial used for test
+#             val_nll = model(best_params, *args_test)
+#             #val_nll = model_wrapper(result.x, args_train)
+#
+#             # McFadden pseudo r2
+#             n_options = 101 # levels of confidence (i.e., 0,1,2... ...99, 100)
+#             nll_model = nll
+#             nll_null = -n_trials * np.log(1 / n_options)
+#             pseudo_r2 = 1 - (nll_model / nll_null)
+#
+#             # AIC and BIC
+#             # OBS! As these are calculated using cross-validated NLL,
+#             # the AIC and BIC now only reflect a model complexity penalty after
+#             # overfitting have already been controled for by the
+#             # cross-validation. Hence, the AIC and BIC measures should not be
+#             # thought of as a control for overfitting in this case.
+#
+#             k = len(best_params)
+#             if model==random_model:
+#                 k=0
+#                # print('random model', 'k =', k)
+#             else:
+#                # print(f'{model}', 'k =', k)
+#                 pass
+#             aic = 2*k + 2*val_nll
+#             bic = k*np.log(n_trials) + 2*val_nll
+#
+#             # Append to result and nll lists
+#             result_list.append(best_params + [val_nll, aic, bic, pseudo_r2])
+#             nll_list.append(val_nll)
+#
+#         # Index best result
+#         best_result_index = nll_list.index(min(nll_list))
+#         best_result = result_list[best_result_index]
+#
+#         # Append the best result for this fold
+#         cv_results.append(best_result)
+#
+#     # Average results over all folds
+#     averaged_result = np.mean(cv_results, axis=0)
+#
+#     return averaged_result
+# =============================================================================
 
-def fit_model_with_cv(model, args, bounds, n_trials, k_folds=5,
-                      start_value_number=10,
+def fit_model_with_cv(model, args, bounds, n_trials,
+                      start_value_number=50,
                       solver="L-BFGS-B",
                       bias_model_best_params=False):
 
     # Normalize bounds for the optimization process
     norm_bounds = [(0, 1) for _ in bounds]
 
-    # K-Fold Cross-Validation setup
-    kf = KFold(n_splits=k_folds, shuffle=True)
+    # Leave-One-Out Cross-Validation setup
+    loo = LeaveOneOut()
 
     # Placeholder for cross-validation results
     cv_results = []
 
-# =============================================================================
-#     # Adjust n trials considering first trials of session is discounted
-#     if n_trials <= 20:
-#         n_adjust = 1
-#     if n_trials > 20: # if two sessions are concatenated
-#         n_adjust = 2
-#     if n_trials > 40: # if three sessions are concatenated
-#         n_adjust = 3
-# =============================================================================
-
     n_adjust = 1 # Remove first trial in session.
-    for train_index, test_index in kf.split(np.arange(n_trials-n_adjust)):
+    for train_index, test_index in loo.split(np.arange(n_trials-n_adjust)):
 
         # Wrap model function to inverse normalize parameters before evaluation
         def model_wrapper(norm_params, *args):
@@ -1513,7 +1543,7 @@ def fit_model_with_cv(model, args, bounds, n_trials, k_folds=5,
             # the AIC and BIC now only reflect a model complexity penalty after
             # overfitting have already been controled for by the
             # cross-validation. Hence, the AIC and BIC measures should not be
-            # thought of as a control for overfitting.
+            # thought of as a control for overfitting in this case.
 
             k = len(best_params)
             if model==random_model:
@@ -1540,6 +1570,7 @@ def fit_model_with_cv(model, args, bounds, n_trials, k_folds=5,
     averaged_result = np.mean(cv_results, axis=0)
 
     return averaged_result
+
 
 
 # Function to process data for a single session
@@ -1608,6 +1639,7 @@ def process_session(df_s):
     alpha_array_rwck = np.zeros(max_sessions)
     alpha_ck_array_rwck = np.zeros(max_sessions)
     sigma_array_rwck = np.zeros(max_sessions)
+    sigma_ck_array_rwck = np.zeros(max_sessions)
     bias_array_rwck = np.zeros(max_sessions)
     beta_array_rwck = np.zeros(max_sessions)
     ck_beta_array_rwck = np.zeros(max_sessions)
@@ -1629,9 +1661,9 @@ def process_session(df_s):
     # Remove baseline
     df_s = df_s[df_s.condition != 'baseline']
 
-    # Calculate trial error as average across subtrials
-    df_s['difference'] = df_s['estimate'] - df_s['correct']
-    error_avg = df_s.groupby('trial')['difference'].mean()
+    # Calculate absolute trial error as the average across subtrials
+    df_s['difference'] = abs(df_s['estimate'] - df_s['correct'])
+    abs_error_avg = df_s.groupby('trial')['difference'].mean()
 
     # Only keep first row of every subtrial (one row = one trial)
     df_s = df_s.drop_duplicates(subset='trial', keep='first')
@@ -1645,7 +1677,7 @@ def process_session(df_s):
     # Calculate trial-by-trial metrics
     confidence = df_s.confidence.values
     feedback = df_s.feedback.values
-    performance = -error_avg.values
+    performance = -abs_error_avg.values
 
     # Random confidence model
     bounds = [(0, 0)]
@@ -1685,7 +1717,9 @@ def process_session(df_s):
     bounds = [(sigma_bound[0], sigma_bound[1]),
               (win_bound[0], win_bound[1])]
     results_win_stay = fit_model_with_cv(model=win_stay_lose_shift,
-                                         args=(confidence, feedback, n_trials),
+                                         args=(confidence,
+                                               feedback,
+                                               n_trials),
                                          bounds=bounds,
                                          n_trials=n_trials,
                                          start_value_number=50,
@@ -1750,7 +1784,7 @@ def process_session(df_s):
     alpha_bound = (0, 1)
     sigma_bound = (1, 100)
     bias_bound = (0, 100)
-    beta_bound = (0, 5)
+    beta_bound = (0, 200)
     bounds = [(alpha_bound[0], alpha_bound[1]),
               (sigma_bound[0], sigma_bound[1]),
               (bias_bound[0], bias_bound[1]),
@@ -1774,12 +1808,14 @@ def process_session(df_s):
     alpha_bound = (0, 1)
     alpha_ck_bound = (0, 1)
     sigma_bound = (1, 100)
+    sigma_ck_bound = (1, 100)
     bias_bound = (0, 100)
-    beta_bound = (0, 5)
-    beta_ck_bound = (0, 5)
+    beta_bound = (0, 200)
+    beta_ck_bound = (0, 200)
     bounds = [(alpha_bound[0], alpha_bound[1]),
               (alpha_ck_bound[0], alpha_ck_bound[1]),
               (sigma_bound[0], sigma_bound[1]),
+              (sigma_ck_bound[0], sigma_ck_bound[1]),
               (bias_bound[0], bias_bound[1]),
               (beta_bound[0], beta_bound[1]),
               (beta_ck_bound[0], beta_ck_bound[1])]
@@ -1792,20 +1828,21 @@ def process_session(df_s):
     alpha_array_rwck[session_idx] = results_rwck[0]
     alpha_ck_array_rwck[session_idx] = results_rwck[1]
     sigma_array_rwck[session_idx] = results_rwck[2]
-    bias_array_rwck[session_idx] = results_rwck[3]
-    beta_array_rwck[session_idx] = results_rwck[4]
-    ck_beta_array_rwck[session_idx] = results_rwck[5]
-    nll_array_rwck[session_idx] = results_rwck[6]
-    aic_array_rwck[session_idx] = results_rwck[7]
-    bic_array_rwck[session_idx] = results_rwck[8]
-    pseudo_r2_array_rwck[session_idx] = results_rwck[9]
+    sigma_ck_array_rwck[session_idx] = results_rwck[3]
+    bias_array_rwck[session_idx] = results_rwck[4]
+    beta_array_rwck[session_idx] = results_rwck[5]
+    ck_beta_array_rwck[session_idx] = results_rwck[6]
+    nll_array_rwck[session_idx] = results_rwck[7]
+    aic_array_rwck[session_idx] = results_rwck[8]
+    bic_array_rwck[session_idx] = results_rwck[9]
+    pseudo_r2_array_rwck[session_idx] = results_rwck[10]
 
     # Rescorla-Wagner Performance Delta model
     alpha_bound = (0, 1)
     sigma_bound = (1, 100)
-    bias_bound = (0, 10)
+    bias_bound = (0, 100)
     w_rw_bound = (0, 10)
-    w_delta_p_bound = (0, 100)
+    w_delta_p_bound = (0, 10)
     bounds = [(alpha_bound[0], alpha_bound[1]),
               (sigma_bound[0], sigma_bound[1]),
               (bias_bound[0], bias_bound[1]),
@@ -1831,6 +1868,8 @@ def process_session(df_s):
     pseudo_r2_array_delta_p_rw[session_idx] = results_delta_p_rw[8]
 
     # Store session metrics
+    # The p at the end of the key name stands for person as each value is
+    # personal.
     session_metrics = {
         'pid': participant,
         'session': session,
@@ -1877,7 +1916,9 @@ def process_session(df_s):
         'bic_array_ck_p': bic_array_ck,
         'pseudo_r2_array_ck_p': pseudo_r2_array_ck,
         'alpha_array_rwck_p': alpha_array_rwck,
+        'alpha_ck_array_rwck_p': alpha_ck_array_rwck,
         'sigma_array_rwck_p': sigma_array_rwck,
+        'sigma_ck_array_rwck_p': sigma_ck_array_rwck,
         'bias_array_rwck_p': bias_array_rwck,
         'beta_array_rwck_p': beta_array_rwck,
         'ck_beta_array_rwck_p': ck_beta_array_rwck,
@@ -1887,6 +1928,9 @@ def process_session(df_s):
         'pseudo_r2_array_rwck_p': pseudo_r2_array_rwck,
         'alpha_array_delta_p_rw_p': alpha_array_delta_p_rw,
         'sigma_array_delta_p_rw_p': sigma_array_delta_p_rw,
+        'bias_array_delta_p_rw_p': bias_array_delta_p_rw,
+        'w_rw_array_delta_p_rw_p': w_rw_array_delta_p_rw,
+        'w_delta_p_array_delta_p_rw_p': w_delta_p_array_delta_p_rw,
         'nll_array_delta_p_rw_p': nll_array_delta_p_rw,
         'aic_array_delta_p_rw_p': aic_array_delta_p_rw,
         'bic_array_delta_p_rw_p': bic_array_delta_p_rw,
@@ -1962,7 +2006,9 @@ def main(df):
         'bic_array_ck_p': np.zeros(num_sessions),
         'pseudo_r2_array_ck_p': np.zeros(num_sessions),
         'alpha_array_rwck_p': np.zeros(num_sessions),
+        'alpha_ck_array_rwck_p': np.zeros(num_sessions),
         'sigma_array_rwck_p': np.zeros(num_sessions),
+        'sigma_ck_array_rwck_p': np.zeros(num_sessions),
         'bias_array_rwck_p': np.zeros(num_sessions),
         'beta_array_rwck_p': np.zeros(num_sessions),
         'ck_beta_array_rwck_p': np.zeros(num_sessions),
@@ -1972,6 +2018,9 @@ def main(df):
         'pseudo_r2_array_rwck_p': np.zeros(num_sessions),
         'alpha_array_delta_p_rw_p': np.zeros(num_sessions),
         'sigma_array_delta_p_rw_p': np.zeros(num_sessions),
+        'bias_array_delta_p_rw_p': np.zeros(num_sessions),
+        'w_rw_array_delta_p_rw_p': np.zeros(num_sessions),
+        'w_delta_p_array_delta_p_rw_p': np.zeros(num_sessions),
         'nll_array_delta_p_rw_p': np.zeros(num_sessions),
         'aic_array_delta_p_rw_p': np.zeros(num_sessions),
         'bic_array_delta_p_rw_p': np.zeros(num_sessions),

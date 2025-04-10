@@ -11,8 +11,10 @@ import numpy as np
 import pandas as pd
 from tqdm import tqdm
 from matplotlib import pyplot as plt
+from scipy.stats import beta
 from src.utils import (add_session_column, load_df)
-from src.models import (RWPD_sim,
+from src.models import (
+                        RWFP_sim,
                         RWP_sim,
                         RWCK_sim,
                         CK_sim,
@@ -20,6 +22,9 @@ from src.models import (RWPD_sim,
                         RW_sim,
                         WSLS_sim,
                         bias_model_sim,
+                        LMF_sim,
+                        LMP_sim,
+                        LMFP_sim
                         )
 
 def process_session(df_s):
@@ -59,7 +64,7 @@ def process_session(df_s):
 
     # Bias model parameters and simulation
     mean_bound = (0, 100)
-    sigma_bound = (1, 15)
+    sigma_bound = (1, 10)
     bias_params = {
         'mean': np.random.uniform(*mean_bound),
         'sigma': np.random.uniform(*sigma_bound)
@@ -68,7 +73,7 @@ def process_session(df_s):
     participant_results.update({'bias_conf': bias_sim_conf, **{f'bias_{k}': v for k, v in bias_params.items()}})
 
     # WSLS model parameters and simulation
-    sigma_bound = (1, 15)
+    sigma_bound = (1, 10)
     win_bound = (1, 100)
     wsls_params = {
         'sigma': np.random.uniform(*sigma_bound),
@@ -79,7 +84,7 @@ def process_session(df_s):
 
     # RW model parameters and simulation
     alpha_bound = (0, 1)
-    sigma_bound = (1, 15)
+    sigma_bound = (1, 10)
     rw_params = {
         'alpha': np.random.uniform(*alpha_bound),
         'sigma': np.random.uniform(*sigma_bound)
@@ -88,11 +93,11 @@ def process_session(df_s):
     rw_sim_conf, y_val_rw = RW_sim((rw_params['alpha'], rw_params['sigma']), confidence, feedback, n_trials)
     participant_results.update({'rw_conf': rw_sim_conf, **{f'rw_{k}': v for k, v in rw_params.items()}})
 
-    # RW cond model parameters and simulation
+    # RW_cond: Rescorla-Wagner model parameters and simulation
     alpha_neut_bound = (0, 1)
     alpha_pos_bound = (0, 1)
     alpha_neg_bound = (0, 1)
-    sigma_bound = (1, 15)
+    sigma_bound = (1, 10)
     rw_cond_params = {
         'alpha_neut': np.random.uniform(*alpha_neut_bound),
         'alpha_pos': np.random.uniform(*alpha_pos_bound),
@@ -103,23 +108,24 @@ def process_session(df_s):
     rw_cond_sim_conf = RW_cond_sim((rw_cond_params['alpha_neut'], rw_cond_params['alpha_pos'], rw_cond_params['alpha_neg'], rw_cond_params['sigma']), confidence, feedback, n_trials, df_s.condition.values)
     participant_results.update({'rw_cond_conf': rw_cond_sim_conf, **{f'rw_cond_{k}': v for k, v in rw_cond_params.items()}})
 
-    # Choice Kernel model parameters and simulation
+    # CK: Choice Kernel model parameters and simulation
     alpha_bound = (0, 1)
-    sigma_bound = (1, 15)
+    sigma_bound = (1, 10)
     beta_bound = (40, 200)
     ck_params = {
         'alpha': np.random.uniform(*alpha_bound),
         'sigma': np.random.uniform(*sigma_bound),
         'beta': np.random.uniform(*beta_bound)
     }
+
     choice_kernel_sim_conf = CK_sim((ck_params['alpha'], ck_params['sigma'], ck_params['beta']), confidence, n_trials)
     participant_results.update({'ck_conf': choice_kernel_sim_conf, **{f'ck_{k}': v for k, v in ck_params.items()}})
 
-    # RW + Choice Kernel model parameters and simulation
+    # RWCK: Rescorla-Wagner + Choice Kernel model parameters and simulation
     alpha_bound = (0, 1)
     alpha_ck_bound = (0, 1)
-    sigma_bound = (1, 15)
-    sigma_ck_bound = (1, 15)
+    sigma_bound = (1, 10)
+    sigma_ck_bound = (1, 10)
     beta_bound = (40, 200)
     beta_ck_bound = (40, 200)
     rwck_params = {
@@ -130,40 +136,83 @@ def process_session(df_s):
         'beta': np.random.uniform(*beta_bound),
         'beta_ck': np.random.uniform(*beta_ck_bound)
     }
+
     rwck_sim_conf = RWCK_sim((rwck_params['alpha'], rwck_params['alpha_ck'], rwck_params['sigma'], rwck_params['sigma_ck'], rwck_params['beta'],  rwck_params['beta_ck']), feedback, confidence, n_trials)
     participant_results.update({'rwck_conf': rwck_sim_conf, **{f'rwck_{k}': v for k, v in rwck_params.items()}})
 
-    # Rescorla-Wagner Performance Delta model parameters and simulation
+    # RWP: Rescorla-Wagner Performance model parameters and simulation
     alpha_bound = (0, 1)
-    sigma_bound = (1, 15)
-    w_rw_bound = (0, 1)
-    w_delta_p_bound = (2, 5)
-    rwpd_params = {
-        'alpha': np.random.uniform(*alpha_bound),
-        'sigma': np.random.uniform(*sigma_bound),
-        'w_rw': np.random.uniform(*w_rw_bound),
-        'w_delta_p': np.random.uniform(*w_delta_p_bound)
-    }
+    sigma_bound = (1, 10)
+    wp_bound = (0, 1.5)
 
-    rwpd_sim_conf = RWPD_sim((rwpd_params['alpha'], rwpd_params['sigma'], rwpd_params['w_rw'], rwpd_params['w_delta_p']), confidence, feedback, n_trials, performance)
-    participant_results.update({'rwpd_conf': rwpd_sim_conf, **{f'rwpd_{k}': v for k, v in rwpd_params.items()}})
-
-    # Rescorla-Wagner Performance model parameters and simulation
-    alpha_bound = (0, 1)
-    sigma_bound = (1, 15)
-    w_rw_bound = (0, 1)
-    w_p_bound = (0.2, 1)
-    intercept_bound = (-80, 80)
     rwp_params = {
         'alpha': np.random.uniform(*alpha_bound),
         'sigma': np.random.uniform(*sigma_bound),
-        'w_rw': np.random.uniform(*w_rw_bound),
-        'w_p': np.random.uniform(*w_p_bound),
-        'intercept': np.random.uniform(*intercept_bound),
+        'wp': np.random.uniform(*wp_bound),
     }
 
-    rwp_sim_conf, y_val_rwp = RWP_sim((rwp_params['alpha'], rwp_params['sigma'], rwp_params['w_rw'], rwp_params['w_p'], rwp_params['intercept']), confidence, feedback, n_trials, performance)
+    rwp_sim_conf = RWP_sim((rwp_params['alpha'], rwp_params['sigma'], rwp_params['wp']), confidence, feedback, n_trials, performance)
     participant_results.update({'rwp_conf': rwp_sim_conf, **{f'rwp_{k}': v for k, v in rwp_params.items()}})
+
+    # RWFP: Rescorla-Wagner Feedback + Performance model parameters and simulation
+    alpha_bound = (0, 1)
+    sigma_bound = (1, 10)
+    wf_bound = (0, 2)
+    wp_bound = (0, 2)
+
+    rwfp_params = {
+        'alpha': np.random.uniform(*alpha_bound),
+        'sigma': np.random.uniform(*sigma_bound),
+        'wf': np.random.uniform(*wf_bound),
+        'wp': np.random.uniform(*wp_bound),
+    }
+
+    rwfp_sim_conf = RWFP_sim((rwfp_params['alpha'], rwfp_params['sigma'], rwfp_params['wf'], rwfp_params['wp']), confidence, feedback, n_trials, performance)
+    participant_results.update({'rwfp_conf': rwfp_sim_conf, **{f'rwfp_{k}': v for k, v in rwfp_params.items()}})
+
+    # LMF: Linear model of Previous Feedback. Parameters and simulation
+    sigma_bound = (1, 10)
+    intercept_bound = (0, 60)
+    wf_bound = (0, 1)
+
+    lmf_params = {
+        'sigma': np.random.uniform(*sigma_bound),
+        'intercept': np.random.uniform(*intercept_bound),
+        'wf': np.random.uniform(*wf_bound),
+    }
+
+    lmf_sim_conf = LMF_sim((lmf_params['sigma'], lmf_params['intercept'], lmf_params['wf']), confidence, feedback, n_trials, performance)
+    participant_results.update({'lmf_conf': lmf_sim_conf, **{f'lmf_{k}': v for k, v in lmf_params.items()}})
+
+    # LMP: Linear Model of Performance. Parameters and simulation
+    sigma_bound = (1, 10)
+    intercept_bound = (50, 100)
+    wp_bound = (0, 2)
+
+    lmp_params = {
+        'sigma': np.random.uniform(*sigma_bound),
+        'intercept': np.random.uniform(*intercept_bound),
+        'wp': np.random.uniform(*wp_bound),
+    }
+
+    lmp_sim_conf = LMP_sim((lmp_params['sigma'], lmp_params['intercept'], lmp_params['wp']), confidence, feedback, n_trials, performance)
+    participant_results.update({'lmp_conf': lmp_sim_conf, **{f'lmp_{k}': v for k, v in lmp_params.items()}})
+
+    # LMFP: Linear Model of Previous Feedback and Performance. Parameters and simulation
+    sigma_bound = (1, 10)
+    intercept_bound = (0, 80)
+    wf_bound = (0, 1)
+    wp_bound = (0, 1)
+
+    lmfp_params = {
+        'sigma': np.random.uniform(*sigma_bound),
+        'intercept': np.random.uniform(*intercept_bound),
+        'wf': np.random.uniform(*wf_bound),
+        'wp': np.random.uniform(*wp_bound),
+    }
+
+    lmfp_sim_conf = LMFP_sim((lmfp_params['sigma'], lmfp_params['intercept'], lmfp_params['wf'], lmfp_params['wp']), confidence, feedback, n_trials, performance)
+    participant_results.update({'lmfp_conf': lmfp_sim_conf, **{f'lmfp_{k}': v for k, v in lmfp_params.items()}})
 
     return [participant_results, participant, session]
 
@@ -179,7 +228,8 @@ def main(df):
     # Define model names for easier labeling in the DataFrame
     model_names = [
         "bias", "wsls", "rw", "rw_cond",
-        "ck", "rwck", "rwpd", "rwp"
+        "ck", "rwck", "rwp", "rwfp", "lmf",
+        "lmp", "lmfp"
     ]
 
     # List to collect trial data and model parameters for the final DataFrame
@@ -236,6 +286,7 @@ def plot_model_results_with_real_data(df, df_real):
     """
     # Get unique model names to determine the number of rows
     model_names = df['model'].unique()
+    print(model_names)
     n_models = len(model_names)
 
     # Set up a 3-column subplot structure (real data, individual simulations, mean confidence)
@@ -266,6 +317,7 @@ def plot_model_results_with_real_data(df, df_real):
         # Plot each session's confidence for the current model in the second column (simulations)
         for session_id in model_df['session'].unique():
             session_df = model_df[model_df['session'] == session_id]
+
             ax_individual.plot(session_df['trial'],
                                session_df['confidence_sim'],
                                label=f'Session {session_id}', marker='o', alpha=0.7)

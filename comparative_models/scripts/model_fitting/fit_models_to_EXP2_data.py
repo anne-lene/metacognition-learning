@@ -71,7 +71,7 @@ def process_session(df_s):
 
     # Biased confidence model
     mean_bound = (0, 100)
-    sigma_bound = (1, 15)
+    sigma_bound = (1, 10)
     bounds = [(mean_bound[0], mean_bound[1]),
               (sigma_bound[0], sigma_bound[1])]
     results = fit_model_with_cv(model=bias_model,
@@ -88,7 +88,7 @@ def process_session(df_s):
     pseudo_r2_bias = results[5].item()
 
     # Win-stay-lose-shift model
-    sigma_bound = (1, 15)
+    sigma_bound = (1, 10)
     win_bound = (1, 100)
     bounds = [(sigma_bound[0], sigma_bound[1]),
               (win_bound[0], win_bound[1])]
@@ -110,7 +110,7 @@ def process_session(df_s):
 
     # Rescorla-Wagner model
     alpha_bound = (0, 1)
-    sigma_bound = (1, 15)
+    sigma_bound = (1, 10)
     bias_bound = (0, 100)
     bounds = [(alpha_bound[0], alpha_bound[1]),
               (sigma_bound[0], sigma_bound[1]),
@@ -132,8 +132,8 @@ def process_session(df_s):
     alpha_neut_bound = (0, 1)  # Alpha neut
     alpha_pos_bound =  (0, 1)  # Alpha pos
     alpha_neg_bound =  (0, 1)  # Alpha neg
-    sigma_bound = (1, 15)  # Standard deviation
-    bias_bound = (0, 100)  # Mean at first trial
+    sigma_bound = (1, 10)  # Standard deviation
+    bias_bound = (0, 100)  # Model mean at first trial
     bounds = [(alpha_neut_bound[0], alpha_neut_bound[1]),
               (alpha_pos_bound[0], alpha_pos_bound[1]),
               (alpha_neg_bound[0], alpha_neg_bound[1]),
@@ -158,7 +158,7 @@ def process_session(df_s):
 
     # Choice Kernel model
     alpha_bound = (0, 1)
-    sigma_bound = (1, 15)
+    sigma_bound = (1, 10)
     bias_bound = (0, 100)
     beta_bound = (0, 200)
     bounds = [(alpha_bound[0], alpha_bound[1]),
@@ -183,8 +183,8 @@ def process_session(df_s):
     # RW + Choice Kernel model
     alpha_bound = (0, 1)
     alpha_ck_bound = (0, 1)
-    sigma_bound = (1, 15)
-    sigma_ck_bound = (1, 15)
+    sigma_bound = (1, 10)
+    sigma_ck_bound = (1, 10)
     bias_bound = (0, 100)
     beta_bound = (0, 200)
     beta_ck_bound = (0, 200)
@@ -215,18 +215,17 @@ def process_session(df_s):
 
     # Rescorla-Wagner Performance model (RWP)
     alpha_bound = (0, 1)
-    sigma_bound = (1, 15)
+    sigma_bound = (1, 10)
     bias_bound = (0, 100)
     w_rw_bound = (0, 1)
     w_p_bound = (0.2, 1)
-    intercept_bound = (-100, 100)
+    intercept_bound = (0, 100)
     bounds = [(alpha_bound[0], alpha_bound[1]),
               (sigma_bound[0], sigma_bound[1]),
               (bias_bound[0], bias_bound[1]),
               (w_rw_bound[0], w_rw_bound[1]),
               (w_p_bound[0], w_p_bound[1]),
-              (intercept_bound[0], intercept_bound[1]),
-              ]
+              (intercept_bound[0], intercept_bound[1])]
     results_rwp = fit_model_with_cv(model=RWP,
                                     args=(confidence,
                                           feedback,
@@ -250,15 +249,17 @@ def process_session(df_s):
 
     # Rescorla-Wagner Performance Delta model (RWPD)
     alpha_bound = (0, 1)
-    sigma_bound = (1, 15)
+    sigma_bound = (1, 10)
     bias_bound = (0, 100)
     w_rw_bound = (0, 1)
-    w_pd_bound = (2, 5)
+    w_pd_bound = (1, 3)
+    intercept_bound = (0, 100)
     bounds = [(alpha_bound[0], alpha_bound[1]),
               (sigma_bound[0], sigma_bound[1]),
               (bias_bound[0], bias_bound[1]),
               (w_rw_bound[0], w_rw_bound[1]),
-              (w_pd_bound[0], w_pd_bound[1])]
+              (w_pd_bound[0], w_pd_bound[1]),
+              (intercept_bound[0], intercept_bound[1])]
     results_rwpd = fit_model_with_cv(model=RWPD,
                                     args=(confidence,
                                           feedback,
@@ -274,10 +275,11 @@ def process_session(df_s):
     bias_rwpd = results_rwpd[2].item()
     w_rw_rwpd = results_rwpd[3].item()
     w_pd_rwpd = results_rwpd[4].item()
-    nll_rwpd = results_rwpd[5].item()
-    aic_rwpd = results_rwpd[6].item()
-    bic_rwpd = results_rwpd[7].item()
-    pseudo_r2_rwpd = results_rwpd[8].item()
+    intercept_rwpd = results_rwpd[5].item()
+    nll_rwpd = results_rwpd[6].item()
+    aic_rwpd = results_rwpd[7].item()
+    bic_rwpd = results_rwpd[8].item()
+    pseudo_r2_rwpd = results_rwpd[9].item()
 
     # Store session metrics
     session_metrics = {
@@ -351,6 +353,7 @@ def process_session(df_s):
         'bias_rwpd': bias_rwpd,
         'w_rw_rwpd': w_rw_rwpd,
         'w_pd_rwpd': w_pd_rwpd,
+        'intercept_rwpd': intercept_rwpd,
         'nll_rwpd': nll_rwpd,
         'aic_rwpd': aic_rwpd,
         'bic_rwpd': bic_rwpd,
@@ -455,6 +458,7 @@ def main(df):
         'bias_rwpd': np.zeros(num_unique_combos),
         'w_rw_rwpd': np.zeros(num_unique_combos),
         'w_pd_rwpd': np.zeros(num_unique_combos),
+        'intercept_rwpd': np.zeros(num_unique_combos),
         'nll_rwpd': np.zeros(num_unique_combos),
         'aic_rwpd': np.zeros(num_unique_combos),
         'bic_rwpd': np.zeros(num_unique_combos),
@@ -462,7 +466,7 @@ def main(df):
     }
 
     # Use multiprocessing to process each participant in parallel
-    with Pool(2) as pool:
+    with Pool(48) as pool:
         for sim_id, metrics in tqdm(pool.map(process_session, df_list),
                                         total=len(df_list)):
 
@@ -489,7 +493,7 @@ def main(df):
 
     # Construct the full path to the file
     file_path = os.path.normpath(os.path.join(script_dir, relative_path))
-    file_name = r"model_fits_EXP2_data_test"
+    file_name = r"model_fits_EXP2_data"
     save_path = os.path.join(relative_path, file_path, file_name)
 
     # Construct and save dataframe

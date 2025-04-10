@@ -22,7 +22,8 @@ fit_data = pd.read_excel('C:/Users/carll/OneDrive/Skrivbord/Oxford/DPhil/metacog
 # Define the order of simulated models
 simulated_models = ['bias', 'win_stay', 'rw',
                     'rw_cond', 'ck', 'rwck',
-                    'rwpd', 'rwp']
+                    'rwpd',
+                    'rwp']
 
 # Change to same naming convension as in sim_data
 fit_data['simulated_model'] = fit_data['model']
@@ -216,10 +217,11 @@ simulated_models = [#'bias',
                     'win_stay',
                    # 'rw',
                     'rw_cond'
-                    'ck',
+                   # 'ck',
                    # 'rwck'
-                   # 'rwpd',
-                    'rwp']
+                    'rwpd',
+                   # 'rwp'
+                   ]
 
 # Change to same naming convension as in sim_data
 fit_data['simulated_model'] = fit_data['model']
@@ -230,10 +232,10 @@ nll_columns = [
     'nll_win_stay',
    # 'nll_rw_symm',
     'nll_rw_cond',
-    'nll_ck',
+   # 'nll_ck',
    # 'nll_rwck',
-   # 'nll_rwpd',
-    'nll_rwp'
+    'nll_rwpd',
+   # 'nll_rwp'
    ]
 
 fit_data_long = fit_data.melt(
@@ -305,10 +307,10 @@ model_order = [
                 'wsls',
               # 'rw',
                 'rw_cond',
-                'ck',
+              # 'ck',
               # 'rwck',
-              # 'rwpd',
-                'rwp'
+               'rwpd',
+              #  'rwp'
               ]
 heatmap_data = heatmap_data.loc[model_order, model_order]
 
@@ -345,14 +347,25 @@ import matplotlib.pyplot as plt
 fit_data = pd.read_excel('C:/Users/carll/OneDrive/Skrivbord/Oxford/DPhil/metacognition-learning/comparative_models/results/variable_feedback/model_comparison/model_and_param_recovery/model_fits_EXP2_sim.xlsx')
 
 # Define the order of models to consider
-model_order = ['wsls', 'rw_cond', 'ck', 'rwp']
+model_order = [
+               'wsls',
+               'rw_cond',
+               'rw',
+               #'ck',
+               #'rwpd',
+               'rwp']
 
 # Assign the model names to a new column
 fit_data['simulated_model'] = fit_data['model']
 
 # Melt fit_data to long format to handle all NLL columns as fitted models
 nll_columns = [
-   'nll_win_stay', 'nll_rw_cond', 'nll_ck', 'nll_rwp'
+   'nll_win_stay',
+   'nll_rw_cond',
+   'nll_rw_symm',
+   #'nll_ck',
+   #'nll_rwpd',
+   'nll_rwp'
 ]
 
 fit_data_long = fit_data.melt(

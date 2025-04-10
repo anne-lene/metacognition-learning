@@ -1,4 +1,4 @@
-#%% -*- coding: utf-8 -*-
+# -*- coding: utf-8 -*-
 """
 Created on Sat Mar 29 00:01:22 2025
 
@@ -14,19 +14,18 @@ from src.utils import (calc_norm_prob_vectorized,
                        sim_norm_prob_vectorized,
                        sim_inverted_norm_prob_vectorized)
 
-def RWP_sim (x, *args):
+def LMFP_sim (x, *args):
 
     """
-    Sim RWP model returning simulated confidence estimates
-    alpha, sigma, w_RW, w_PD = x
-    confidence, feedback, n_trials, performance = args
+    Linear weighted sum of intecept and current performance and previous
+    feedback. Performance is the negative absolute error.
     """
 
-    alpha, sigma, w_RW, w_P, intercept = x
+    sigma, intercept, wp, wf = x
     confidence, feedback, n_trials, performance = args
 
     model_pred = np.zeros(n_trials)
-    c_rw = np.zeros(n_trials)
+    c_lmfp = np.zeros(n_trials)
     conf_vec = np.zeros(n_trials)
     for t in range(n_trials):
 
@@ -43,22 +42,13 @@ def RWP_sim (x, *args):
             conf_vec[t] = conf_sim[0]
 
         else:
-            # Get previous feedback (f) and confidence estimate (c)
-            f = feedback[t-1]
-            c = model_pred[t-1] #c_rw[t-1]
 
             # Update rule
-            c_rw[t]  = c + alpha*(f - c)
+            c_lmfp[t] = intercept + wp*performance[t] + wf*feedback[t-1]
 
-            # Ensure c_rw is between 0 and 100.
-            c_rw[t] = max(0, min(100, c_rw[t]))
+            # Ensure the model prediction is between 0 and 100.
+            model_pred[t] = max(0, min(100, c_lmfp[t]))
 
-            # Get performance influence on confidence
-            # The +100 establish a threshold for when the error size should be
-            # considered so large that it can be ignored.
-            c_P = performance[t] + 100
-
-            model_pred[t] = max(0, min(100, intercept + (w_RW*c_rw[t]) + (w_P*c_P)))
 
             # Calculate probabilities across different options (p_options)
             conf_sim, p_options = sim_norm_prob_vectorized(
@@ -68,9 +58,277 @@ def RWP_sim (x, *args):
 
             conf_vec[t] = conf_sim[0]
 
-    return conf_vec, p_options
+    return conf_vec
 
-def RWP_trial (x, *args):
+def LMFP_trial (x, *args):
+
+    """
+    Linear weighted sum of intecept and current performance and previous
+    feedback. Performance is the negative absolute error.
+    """
+
+    sigma, bias, intercept, wp, wf = x
+    confidence, feedback, n_trials, performance = args
+
+    sigma_vec = np.full(n_trials, sigma)  # vector for standard deviation
+    model_pred = np.zeros(n_trials)
+    c_lmfp = np.zeros(n_trials)
+    # Small value to avoid division by 0
+    epsilon = 1e-10
+    for t in range(n_trials):
+
+        if t == 0:
+            # The probability mean for the first trial (bias) is fit
+            # Trial included to get previous feedback and performance
+            model_pred[t] = bias
+            c_lmfp[t] = bias
+
+        else:
+
+            # Update rule
+            c_lmfp[t] = intercept + wp*performance[t] + wf*feedback[t-1]
+
+            # Ensure the model prediction is between 0 and 100.
+            model_pred[t] = max(0, min(100, c_lmfp[t]))
+
+
+
+    # Remove initial baseline trial
+    model_pred = model_pred[1:]
+    sigma_vec = sigma_vec[1:]
+    confidence = confidence[1:]
+
+    # Calculate probabilities and Negative log likelihood (NLL)
+    probabilities, y_values = calc_norm_prob_vectorized(confidence,
+                                                        model_pred,
+                                                        sigma_vec)
+    nlls = -np.log(probabilities + epsilon)
+
+    return [nlls, model_pred, sigma_vec, confidence]
+
+def LMFP (x, *args):
+
+    """
+    Linear weighted sum of intecept and current performance and previous
+    feedback. Performance is the negative absolute error.
+    """
+
+    sigma, bias, intercept, wp, wf = x
+    confidence, feedback, n_trials, performance, trial_index = args
+
+    sigma_vec = np.full(n_trials, sigma)  # vector for standard deviation
+    model_pred = np.zeros(n_trials)
+    c_lmfp = np.zeros(n_trials)
+    # Small value to avoid division by 0
+    epsilon = 1e-10
+    for t in range(n_trials):
+
+        if t == 0:
+            # The probability mean for the first trial (bias) is fit
+            # Trial included to get previous feedback and performance
+            model_pred[t] = bias
+            c_lmfp[t] = bias
+        else:
+
+            # Update rule
+            c_lmfp[t] = intercept + wp*performance[t] + wf*feedback[t-1]
+
+            # Ensure the model prediction is between 0 and 100.
+            model_pred[t] = max(0, min(100, c_lmfp[t]))
+
+    # Remove initial baseline trial
+    model_pred = model_pred[1:]
+    sigma_vec = sigma_vec[1:]
+    confidence = confidence[1:]
+
+    # Calculate probabilities and Negative log likelihood (NLL)
+    probabilities, y_values = calc_norm_prob_vectorized(confidence,
+                                                        model_pred,
+                                                        sigma_vec)
+    nlls = -np.log(probabilities + epsilon)
+
+    return np.sum(nlls[trial_index])
+
+def LMP_sim (x, *args):
+
+    """
+    Linear weighted sum of intecept and current performance. Performance is
+    the negative absolute error.
+    """
+
+    sigma, intercept, wp = x
+    confidence, feedback, n_trials, performance = args
+
+    model_pred = np.zeros(n_trials)
+    c_lmp = np.zeros(n_trials)
+    conf_vec = np.zeros(n_trials)
+    for t in range(n_trials):
+
+        if t == 0:
+            # The probability mean for the first trial
+            model_pred[t] = confidence[t]
+
+            # Calculate probabilities and simulate confidence estimate
+            conf_sim, y_values = sim_norm_prob_vectorized(
+                                                    np.array([model_pred[t]]),
+                                                    np.array([sigma]))
+
+            # Save simulated estimate to confidence array
+            conf_vec[t] = conf_sim[0]
+
+        else:
+
+            # Update rule
+            c_lmp[t] = intercept + wp*performance[t]
+
+            # Ensure the model prediction is between 0 and 100.
+            model_pred[t] = max(0, min(100, c_lmp[t]))
+
+
+            # Calculate probabilities across different options (p_options)
+            conf_sim, p_options = sim_norm_prob_vectorized(
+                                                     np.array([model_pred[t]]),
+                                                     np.array([sigma]),
+                                                     )
+
+            conf_vec[t] = conf_sim[0]
+
+    return conf_vec
+
+def LMP_trial (x, *args):
+
+    """
+    Linear weighted sum of intecept and current performance. Performance is
+    the negative absolute error.
+    """
+
+    sigma, bias, intercept, wp = x
+    confidence, feedback, n_trials, performance = args
+
+    sigma_vec = np.full(n_trials, sigma)  # vector for standard deviation
+    model_pred = np.zeros(n_trials)
+    c_lmp = np.zeros(n_trials)
+    # Small value to avoid division by 0
+    epsilon = 1e-10
+    for t in range(n_trials):
+
+        if t == 0:
+            # The probability mean for the first trial (bias) is fit
+            # Trial included to get previous feedback and performance
+            model_pred[t] = bias
+            c_lmp[t] = bias
+
+        else:
+
+            # Update rule
+            c_lmp[t] = intercept + wp*performance[t]
+
+            # Ensure the model prediction is between 0 and 100.
+            model_pred[t] = max(0, min(100, c_lmp[t]))
+
+
+
+    # Remove initial baseline trial
+    model_pred = model_pred[1:]
+    sigma_vec = sigma_vec[1:]
+    confidence = confidence[1:]
+
+    # Calculate probabilities and Negative log likelihood (NLL)
+    probabilities, y_values = calc_norm_prob_vectorized(confidence,
+                                                        model_pred,
+                                                        sigma_vec)
+    nlls = -np.log(probabilities + epsilon)
+
+    return [nlls, model_pred, sigma_vec, confidence]
+
+def LMP (x, *args):
+
+    """
+    Linear weighted sum of intecept and current performance. Performance is
+    the negative absolute error.
+    """
+
+    sigma, bias, intercept, wp = x
+    confidence, feedback, n_trials, performance, trial_index = args
+
+    sigma_vec = np.full(n_trials, sigma)  # vector for standard deviation
+    model_pred = np.zeros(n_trials)
+    c_lmp = np.zeros(n_trials)
+    # Small value to avoid division by 0
+    epsilon = 1e-10
+    for t in range(n_trials):
+
+        if t == 0:
+            # The probability mean for the first trial (bias) is fit
+            # Trial included to get previous feedback and performance
+            model_pred[t] = bias
+            c_lmp[t] = bias
+        else:
+
+            # Update rule
+            c_lmp[t] = intercept + wp*performance[t]
+
+            # Ensure the model prediction is between 0 and 100.
+            model_pred[t] = max(0, min(100, c_lmp[t]))
+
+    # Remove initial baseline trial
+    model_pred = model_pred[1:]
+    sigma_vec = sigma_vec[1:]
+    confidence = confidence[1:]
+
+    # Calculate probabilities and Negative log likelihood (NLL)
+    probabilities, y_values = calc_norm_prob_vectorized(confidence,
+                                                        model_pred,
+                                                        sigma_vec)
+    nlls = -np.log(probabilities + epsilon)
+
+    return np.sum(nlls[trial_index])
+
+def LMF_sim (x, *args):
+
+    """
+    Linear weighted sum of intecept and previous feedback.
+    """
+
+    sigma, intercept, wf = x
+    confidence, feedback, n_trials, performance = args
+
+    model_pred = np.zeros(n_trials)
+    c_lmf = np.zeros(n_trials)
+    conf_vec = np.zeros(n_trials)
+    for t in range(n_trials):
+
+        if t == 0:
+            # The probability mean for the first trial
+            model_pred[t] = confidence[t]
+
+            # Calculate probabilities and simulate confidence estimate
+            conf_sim, y_values = sim_norm_prob_vectorized(
+                                                    np.array([model_pred[t]]),
+                                                    np.array([sigma]))
+
+            # Save simulated estimate to confidence array
+            conf_vec[t] = conf_sim[0]
+
+        else:
+
+            # Update rule
+            c_lmf[t] = intercept + wf*feedback[t-1]
+
+            # Ensure the model prediction is between 0 and 100.
+            model_pred[t] = max(0, min(100, c_lmf[t]))
+
+            # Calculate probabilities across different options (p_options)
+            conf_sim, p_options = sim_norm_prob_vectorized(
+                                                     np.array([model_pred[t]]),
+                                                     np.array([sigma]),
+                                                     )
+
+            conf_vec[t] = conf_sim[0]
+
+    return conf_vec
+
+def LMF_trial (x, *args):
 
     """
     Confidence is updated as the weighted sum of: (1) confidence updated by a
@@ -80,12 +338,12 @@ def RWP_trial (x, *args):
     return list of vectors
     """
 
-    alpha, sigma, bias, w_RW, w_P, intercept = x
+    sigma, bias, intercept, wf = x
     confidence, feedback, n_trials, performance = args
 
     sigma_vec = np.full(n_trials, sigma)  # vector for standard deviation
     model_pred = np.zeros(n_trials)
-    c_rw = np.zeros(n_trials)
+    c_lmf = np.zeros(n_trials)
     # Small value to avoid division by 0
     epsilon = 1e-10
     for t in range(n_trials):
@@ -94,27 +352,286 @@ def RWP_trial (x, *args):
             # The probability mean for the first trial (bias) is fit
             # Trial included to get previous feedback and performance
             model_pred[t] = bias
-            c_rw[t] = bias
+            c_lmf[t] = bias
 
         else:
 
-            # Get previous confidence value and feedback,
-            f = feedback[t-1]
-            c = int(c_rw[t-1])
+            # Update rule
+            c_lmf[t] = intercept + wf*feedback[t-1]
 
-            PE = f - c  # Prediction error
-            c_rw[t] = c + alpha*PE  # Update rule
+            # Ensure the model prediction is between 0 and 100.
+            model_pred[t] = max(0, min(100, c_lmf[t]))
 
-            # Encure c_rw is between 0 and 100.
-            c_rw[t] = max(0, min(100, c_rw[t]))
 
-            # Get performance influence on confidence
-            # The +100 establish a threshold for when the error size should be
-            # considered so large that it can be ignored.
-            c_P = performance[t] + 100
+    # Remove initial baseline trial
+    model_pred = model_pred[1:]
+    sigma_vec = sigma_vec[1:]
+    confidence = confidence[1:]
 
-            # Get the prediction as the weighted sum
-            model_pred[t] = max(0, min(100, intercept + (w_RW*c_rw[t]) + (w_P*c_P)))
+    # Calculate probabilities and Negative log likelihood (NLL)
+    probabilities, y_values = calc_norm_prob_vectorized(confidence,
+                                                        model_pred,
+                                                        sigma_vec)
+    nlls = -np.log(probabilities + epsilon)
+
+    return [nlls, model_pred, sigma_vec, confidence]
+
+def LMF (x, *args):
+
+    """
+    Confidence is updated as the weighted sum of: (1)
+    confidence updated by a rescorla-wagner updated rule (C_RW) and (2)
+    the averge performance (P) on the last 3 subtrials.
+    """
+
+    sigma, bias, intercept, wf = x
+    confidence, feedback, n_trials, performance, trial_index = args
+
+    sigma_vec = np.full(n_trials, sigma)  # vector for standard deviation
+    model_pred = np.zeros(n_trials)
+    c_lmf = np.zeros(n_trials)
+    # Small value to avoid division by 0
+    epsilon = 1e-10
+    for t in range(n_trials):
+
+        if t == 0:
+            # The probability mean for the first trial (bias) is fit
+            # Trial included to get previous feedback and performance
+            model_pred[t] = bias
+            c_lmf[t] = bias
+        else:
+
+            # Update rule
+            c_lmf[t] = intercept + wf*feedback[t-1]
+
+            # Ensure the model prediction is between 0 and 100.
+            model_pred[t] = max(0, min(100, c_lmf[t]))
+
+    # Remove initial baseline trial
+    model_pred = model_pred[1:]
+    sigma_vec = sigma_vec[1:]
+    confidence = confidence[1:]
+
+    # Calculate probabilities and Negative log likelihood (NLL)
+    probabilities, y_values = calc_norm_prob_vectorized(confidence,
+                                                        model_pred,
+                                                        sigma_vec)
+    nlls = -np.log(probabilities + epsilon)
+
+    return np.sum(nlls[trial_index])
+
+def RWFP_sim (x, *args):
+
+    """
+    RW model where the outcome is a weighted sum of current performance and
+    previous feedback. Performance is the negative absolute error.
+    """
+
+    alpha, sigma, wf, wp = x
+    confidence, feedback, n_trials, performance = args
+
+    model_pred = np.zeros(n_trials)
+    c_rwfp = np.zeros(n_trials)
+    conf_vec = np.zeros(n_trials)
+    for t in range(n_trials):
+
+        if t == 0:
+            # The probability mean for the first trial
+            model_pred[t] = confidence[t]
+
+            # Calculate probabilities and simulate confidence estimate
+            conf_sim, y_values = sim_norm_prob_vectorized(
+                                                    np.array([model_pred[t]]),
+                                                    np.array([sigma]))
+
+            # Save simulated estimate to confidence array
+            conf_vec[t] = conf_sim[0]
+
+        else:
+
+            # Update rule
+            c_rwfp[t] = model_pred[t-1] + alpha*((wp*performance[t] + wf*feedback[t-1]) - model_pred[t-1])
+
+            # Ensure the model prediction is between 0 and 100.
+            model_pred[t] = max(0, min(100, c_rwfp[t]))
+
+
+            # Calculate probabilities across different options (p_options)
+            conf_sim, p_options = sim_norm_prob_vectorized(
+                                                     np.array([model_pred[t]]),
+                                                     np.array([sigma]),
+                                                     )
+
+            conf_vec[t] = conf_sim[0]
+
+    return conf_vec
+
+def RWFP_trial (x, *args):
+
+    """
+    RW model where the outcome is a weighted sum of current performance and
+    previous feedback. Performance is the negative absolute error.
+    """
+
+    alpha, sigma, bias, wf, wp = x
+    confidence, feedback, n_trials, performance = args
+
+    sigma_vec = np.full(n_trials, sigma)  # vector for standard deviation
+    model_pred = np.zeros(n_trials)
+    c_rwfp = np.zeros(n_trials)
+    # Small value to avoid division by 0
+    epsilon = 1e-10
+    for t in range(n_trials):
+
+        if t == 0:
+            # The probability mean for the first trial (bias) is fit
+            # Trial included to get previous feedback and performance
+            model_pred[t] = bias
+            c_rwfp[t] = bias
+
+        else:
+
+            # Update rule
+            c_rwfp[t] = model_pred[t-1] + alpha*((wp*performance[t] + wf*feedback[t-1]) - model_pred[t-1])
+
+            # Ensure the model prediction is between 0 and 100.
+            model_pred[t] = max(0, min(100, c_rwfp[t]))
+
+
+    # Remove initial baseline trial
+    model_pred = model_pred[1:]
+    sigma_vec = sigma_vec[1:]
+    confidence = confidence[1:]
+
+    # Calculate probabilities and Negative log likelihood (NLL)
+    probabilities, y_values = calc_norm_prob_vectorized(confidence,
+                                                        model_pred,
+                                                        sigma_vec)
+    nlls = -np.log(probabilities + epsilon)
+
+    return [nlls, model_pred, sigma_vec, confidence]
+
+def RWFP (x, *args):
+
+    """
+    RW model where the outcome is a weighted sum of current performance and
+    previous feedback. Performance is the negative absolute error.
+    """
+
+    alpha, sigma, bias, wf, wp = x
+    confidence, feedback, n_trials, performance, trial_index = args
+
+    sigma_vec = np.full(n_trials, sigma)  # vector for standard deviation
+    model_pred = np.zeros(n_trials)
+    c_rwfp = np.zeros(n_trials)
+    # Small value to avoid division by 0
+    epsilon = 1e-10
+    for t in range(n_trials):
+
+        if t == 0:
+            # The probability mean for the first trial (bias) is fit
+            # Trial included to get previous feedback and performance
+            model_pred[t] = bias
+            c_rwfp[t] = bias
+        else:
+
+            # Update rule
+            c_rwfp[t] = model_pred[t-1] + alpha*((wp*performance[t] + wf*feedback[t-1]) - model_pred[t-1])
+
+            # Ensure the model prediction is between 0 and 100.
+            model_pred[t] = max(0, min(100, c_rwfp[t]))
+
+    # Remove initial baseline trial
+    model_pred = model_pred[1:]
+    sigma_vec = sigma_vec[1:]
+    confidence = confidence[1:]
+
+    # Calculate probabilities and Negative log likelihood (NLL)
+    probabilities, y_values = calc_norm_prob_vectorized(confidence,
+                                                        model_pred,
+                                                        sigma_vec)
+    nlls = -np.log(probabilities + epsilon)
+
+    return np.sum(nlls[trial_index])
+
+def RWP_sim (x, *args):
+
+
+    """
+    RW model where the outcome is the current performance.
+    Performance is the negative absolute error.
+    """
+
+    alpha, sigma, wp = x
+    confidence, feedback, n_trials, performance = args
+
+    model_pred = np.zeros(n_trials)
+    c_rwp = np.zeros(n_trials)
+    conf_vec = np.zeros(n_trials)
+    for t in range(n_trials):
+
+        if t == 0:
+            # The probability mean for the first trial
+            model_pred[t] = confidence[t]
+
+            # Calculate probabilities and simulate confidence estimate
+            conf_sim, y_values = sim_norm_prob_vectorized(
+                                                    np.array([model_pred[t]]),
+                                                    np.array([sigma]))
+
+            # Save simulated estimate to confidence array
+            conf_vec[t] = conf_sim[0]
+
+        else:
+            # Scale performance: 100 = Perfect; 0 = 100 point error
+            performance_scaled = max(0, min(100 + performance[t], 100))
+
+            # Update rule
+            c_rwp[t] = model_pred[t-1] + alpha*(wp*performance_scaled - model_pred[t-1])
+
+            # Ensure the model prediction is between 0 and 100.
+            model_pred[t] = max(0, min(100, c_rwp[t]))
+
+            # Calculate probabilities across different options (p_options)
+            conf_sim, p_options = sim_norm_prob_vectorized(
+                                                     np.array([model_pred[t]]),
+                                                     np.array([sigma]),
+                                                     )
+
+            conf_vec[t] = conf_sim[0]
+
+    return conf_vec
+
+def RWP_trial (x, *args):
+
+    """
+    RW model where the outcome is the current performance.
+    Performance is the negative absolute error.
+    """
+
+    alpha, sigma, bias, wp = x
+    confidence, feedback, n_trials, performance = args
+
+    sigma_vec = np.full(n_trials, sigma)  # vector for standard deviation
+    model_pred = np.zeros(n_trials)
+    c_rwp = np.zeros(n_trials)
+    # Small value to avoid division by 0
+    epsilon = 1e-10
+    for t in range(n_trials):
+
+        if t == 0:
+            # The probability mean for the first trial (bias) is fit
+            # Trial included to get previous feedback and performance
+            model_pred[t] = bias
+            c_rwp[t] = bias
+
+        else:
+
+            # Update rule
+            c_rwp[t] = model_pred[t-1] + alpha*(wp*performance[t] - model_pred[t-1])
+
+            # Ensure the model prediction is between 0 and 100.
+            model_pred[t] = max(0, min(100, c_rwp[t]))
 
     # Remove initial baseline trial
     model_pred = model_pred[1:]
@@ -131,18 +648,18 @@ def RWP_trial (x, *args):
 
 def RWP (x, *args):
 
+
     """
-    Confidence is updated as the weighted sum of: (1)
-    confidence updated by a rescorla-wagner updated rule (C_RW) and (2)
-    the averge performance (P) on the last 3 subtrials.
+    RW model where the outcome is the current performance.
+    Performance is the negative absolute error.
     """
 
-    alpha, sigma, bias, w_RW, w_P, intercept = x
+    alpha, sigma, bias, wp = x
     confidence, feedback, n_trials, performance, trial_index = args
 
     sigma_vec = np.full(n_trials, sigma)  # vector for standard deviation
     model_pred = np.zeros(n_trials)
-    c_rw = np.zeros(n_trials)
+    c_rwp = np.zeros(n_trials)
     # Small value to avoid division by 0
     epsilon = 1e-10
     for t in range(n_trials):
@@ -151,24 +668,14 @@ def RWP (x, *args):
             # The probability mean for the first trial (bias) is fit
             # Trial included to get previous feedback and performance
             model_pred[t] = bias
-            c_rw[t] = bias
+            c_rwp[t] = bias
         else:
-            # Get previous feedback (f) and confidence estimate (c)
-            f = feedback[t-1]
-            c = int(c_rw[t-1])
 
-            PE = f - c  # Prediction error
-            c_rw[t] = c + alpha*PE  # Update rule
+            # Update rule
+            c_rwp[t] = model_pred[t-1] + alpha*(wp*performance[t] - model_pred[t-1])
 
-            # Ensure c_rw is between 0 and 100.
-            c_rw[t] = max(0, min(100, c_rw[t]))
-
-            # Get performance influence on confidence
-            # The +100 establish a threshold for when the error size should be
-            # considered so large that it can be ignored.
-            c_P = performance[t] + 100
-
-            model_pred[t] = max(0, min(100, intercept + (w_RW*c_rw[t]) + (w_P*c_P)))
+            # Ensure the model prediction is between 0 and 100.
+            model_pred[t] = max(0, min(100, c_rwp[t]))
 
     # Remove initial baseline trial
     model_pred = model_pred[1:]
@@ -183,7 +690,180 @@ def RWP (x, *args):
 
     return np.sum(nlls[trial_index])
 
-def RWPD_sim (x, *args):
+# =============================================================================
+#
+# def RWP_sim (x, *args):
+#
+#     """
+#     Sim RWP model returning simulated confidence estimates
+#     alpha, sigma, w_RW, w_PD = x
+#     confidence, feedback, n_trials, performance = args
+#     """
+#
+#     alpha, sigma, w_RW, w_P, intercept = x
+#     confidence, feedback, n_trials, performance = args
+#
+#     model_pred = np.zeros(n_trials)
+#     c_rw = np.zeros(n_trials)
+#     conf_vec = np.zeros(n_trials)
+#     for t in range(n_trials):
+#
+#         if t == 0:
+#             # The probability mean for the first trial
+#             model_pred[t] = confidence[t]
+#
+#             # Calculate probabilities and simulate confidence estimate
+#             conf_sim, y_values = sim_norm_prob_vectorized(
+#                                                     np.array([model_pred[t]]),
+#                                                     np.array([sigma]))
+#
+#             # Save simulated estimate to confidence array
+#             conf_vec[t] = conf_sim[0]
+#
+#         else:
+#             # Get previous feedback (f) and confidence estimate (c)
+#             f = feedback[t-1]
+#             c = model_pred[t-1] #c_rw[t-1]
+#
+#             # Update rule
+#             c_rw[t]  = c + alpha*(f - c)
+#
+#             # Ensure c_rw is between 0 and 100.
+#             c_rw[t] = max(0, min(100, c_rw[t]))
+#
+#             # Get performance influence on confidence
+#             # The +100 establish a threshold for when the error size should be
+#             # considered so large that it can be ignored.
+#             c_P = performance[t] + 100
+#
+#             model_pred[t] = max(0, min(100, intercept + (w_RW*c_rw[t]) + (w_P*c_P)))
+#
+#             # Calculate probabilities across different options (p_options)
+#             conf_sim, p_options = sim_norm_prob_vectorized(
+#                                                      np.array([model_pred[t]]),
+#                                                      np.array([sigma]),
+#                                                      )
+#
+#             conf_vec[t] = conf_sim[0]
+#
+#     return conf_vec, p_options
+#
+# def RWP_trial (x, *args):
+#
+#     """
+#     Confidence is updated as the weighted sum of: (1) confidence updated by a
+#     rescorla-wagner updated rule (C_RW) and (2) the change in performance
+#     since the last trial (delta P).
+#
+#     return list of vectors
+#     """
+#
+#     alpha, sigma, bias, w_RW, w_P, intercept = x
+#     confidence, feedback, n_trials, performance = args
+#
+#     sigma_vec = np.full(n_trials, sigma)  # vector for standard deviation
+#     model_pred = np.zeros(n_trials)
+#     c_rw = np.zeros(n_trials)
+#     # Small value to avoid division by 0
+#     epsilon = 1e-10
+#     for t in range(n_trials):
+#
+#         if t == 0:
+#             # The probability mean for the first trial (bias) is fit
+#             # Trial included to get previous feedback and performance
+#             model_pred[t] = bias
+#             c_rw[t] = bias
+#
+#         else:
+#
+#             # Get previous confidence value and feedback,
+#             f = feedback[t-1]
+#             c = int(c_rw[t-1])
+#
+#             PE = f - c  # Prediction error
+#             c_rw[t] = c + alpha*PE  # Update rule
+#
+#             # Encure c_rw is between 0 and 100.
+#             c_rw[t] = max(0, min(100, c_rw[t]))
+#
+#             # Get performance influence on confidence
+#             # The +100 establish a threshold for when the error size should be
+#             # considered so large that it can be ignored.
+#             c_P = performance[t] + 100
+#
+#             # Get the prediction as the weighted sum
+#             model_pred[t] = max(0, min(100, intercept + (w_RW*c_rw[t]) + (w_P*c_P)))
+#
+#     # Remove initial baseline trial
+#     model_pred = model_pred[1:]
+#     sigma_vec = sigma_vec[1:]
+#     confidence = confidence[1:]
+#
+#     # Calculate probabilities and Negative log likelihood (NLL)
+#     probabilities, y_values = calc_norm_prob_vectorized(confidence,
+#                                                         model_pred,
+#                                                         sigma_vec)
+#     nlls = -np.log(probabilities + epsilon)
+#
+#     return [nlls, model_pred, sigma_vec, confidence]
+#
+# def RWP (x, *args):
+#
+#     """
+#     Confidence is updated as the weighted sum of: (1)
+#     confidence updated by a rescorla-wagner updated rule (C_RW) and (2)
+#     the averge performance (P) on the last 3 subtrials.
+#     """
+#
+#     alpha, sigma, bias, w_RW, w_P, intercept = x
+#     confidence, feedback, n_trials, performance, trial_index = args
+#
+#     sigma_vec = np.full(n_trials, sigma)  # vector for standard deviation
+#     model_pred = np.zeros(n_trials)
+#     c_rw = np.zeros(n_trials)
+#     # Small value to avoid division by 0
+#     epsilon = 1e-10
+#     for t in range(n_trials):
+#
+#         if t == 0:
+#             # The probability mean for the first trial (bias) is fit
+#             # Trial included to get previous feedback and performance
+#             model_pred[t] = bias
+#             c_rw[t] = bias
+#         else:
+#             # Get previous feedback (f) and confidence estimate (c)
+#             f = feedback[t-1]
+#             c = int(c_rw[t-1])
+#
+#             PE = f - c  # Prediction error
+#             c_rw[t] = c + alpha*PE  # Update rule
+#
+#             # Ensure c_rw is between 0 and 100.
+#             c_rw[t] = max(0, min(100, c_rw[t]))
+#
+#             # Get performance influence on confidence
+#             # The +100 establish a threshold for when the error size should be
+#             # considered so large that it can be ignored.
+#             c_P = performance[t] + 100
+#
+#             model_pred[t] = max(0, min(100, intercept + (w_RW*c_rw[t]) + (w_P*c_P)))
+#
+#     # Remove initial baseline trial
+#     model_pred = model_pred[1:]
+#     sigma_vec = sigma_vec[1:]
+#     confidence = confidence[1:]
+#
+#     # Calculate probabilities and Negative log likelihood (NLL)
+#     probabilities, y_values = calc_norm_prob_vectorized(confidence,
+#                                                         model_pred,
+#                                                         sigma_vec)
+#     nlls = -np.log(probabilities + epsilon)
+#
+#     return np.sum(nlls[trial_index])
+# =============================================================================
+
+
+def RWPD_simv2 (x, *args):
 
     """
     Sim RWPD model retuning simulated confidence estimates
@@ -191,19 +871,21 @@ def RWPD_sim (x, *args):
     confidence, feedback, n_trials, performance = args
     """
 
-    alpha, sigma, w_RW, w_PD = x
-    confidence, feedback, n_trials, performance = args
+    alpha, sigma, bias, w_RW, w_PD, intercept, alpha_p = x
+    confidence, feedback, n_trials, performance, trial_index = args
 
     model_pred = np.zeros(n_trials)
-    c_rw = np.zeros(n_trials)
     conf_vec = np.zeros(n_trials)
+    c_rw = np.zeros(n_trials)
+    c_pd = np.zeros(n_trials)
     for t in range(n_trials):
 
         if t == 0:
-            # The probability mean for the first trial
-            model_pred[t] = confidence[t]
-            c_rw[t] = confidence[t]
-            conf_vec[t] = confidence[t]
+            # The probability mean for the first trial (bias) is fit
+            # Trial included to get previous feedback and performance
+            model_pred[t] = bias
+            c_rw[t] = bias
+            c_pd[t] = bias
         else:
             # Get previous feedback (f) and confidence estimate (c)
             f = feedback[t-1]
@@ -215,13 +897,13 @@ def RWPD_sim (x, *args):
             # Ensure c_rw is between 0 and 100.
             c_rw[t] = max(0, min(100, c_rw[t]))
 
-            # Get performance delta
-            delta_p = performance[t] - performance[t-1]
+            # Get confidence estimate based on performance delta
+            c_pd[t] = c_pd[t-1] + alpha_p*(performance[t] - c_pd[t-1])
 
-            # Encure delta_p is between -100 and 100.
-            delta_p = max(-100, min(100, delta_p))
+            # Encure c_p[t] is between -100 and 100.
+            c_pd[t] = max(-100, min(100, c_pd[t]))
 
-            model_pred[t] = max(0, min(100, int((w_RW*c_rw[t]) + (w_PD*delta_p))))
+            model_pred[t] = max(0, min(100, intercept + (w_RW*c_rw[t]) + (w_PD*c_pd[t])))
 
             # Calculate probabilities across different options (p_options)
             conf_sim, p_options = sim_norm_prob_vectorized(
@@ -233,7 +915,7 @@ def RWPD_sim (x, *args):
 
     return conf_vec
 
-def RWPD_trial (x, *args):
+def RWPD_trialv2 (x, *args):
 
     """
     Confidence is updated as the weighted sum of: (1) confidence updated by a
@@ -243,12 +925,13 @@ def RWPD_trial (x, *args):
     return list of vectors
     """
 
-    alpha, sigma, bias, w_RW, w_PD = x
-    confidence, feedback, n_trials, performance = args
+    alpha, sigma, bias, w_RW, w_PD, intercept, alpha_p = x
+    confidence, feedback, n_trials, performance, trial_index = args
 
     sigma_vec = np.full(n_trials, sigma)  # vector for standard deviation
     model_pred = np.zeros(n_trials)
     c_rw = np.zeros(n_trials)
+    c_pd = np.zeros(n_trials)
     # Small value to avoid division by 0
     epsilon = 1e-10
     for t in range(n_trials):
@@ -258,27 +941,25 @@ def RWPD_trial (x, *args):
             # Trial included to get previous feedback and performance
             model_pred[t] = bias
             c_rw[t] = bias
-
+            c_pd[t] = bias
         else:
-
-            # Get previous confidence value and feedback,
+            # Get previous feedback (f) and confidence estimate (c)
             f = feedback[t-1]
             c = int(c_rw[t-1])
 
             PE = f - c  # Prediction error
             c_rw[t] = c + alpha*PE  # Update rule
 
-            # Encure c_rw is between 0 and 100.
+            # Ensure c_rw is between 0 and 100.
             c_rw[t] = max(0, min(100, c_rw[t]))
 
-            # Get delta performance
-            delta_p = performance[t] - performance[t-1]
+            # Get confidence estimate based on performance delta
+            c_pd[t] = c_pd[t-1] + alpha_p*(performance[t] - c_pd[t-1])
 
-            # Encure delta_p is between -100 and 100.
-            delta_p = max(-100, min(100, delta_p))
+            # Encure c_p[t] is between -100 and 100.
+            c_pd[t] = max(-100, min(100, c_pd[t]))
 
-            # Get the prediction as the weighted sum
-            model_pred[t] = max(0, min(100, int((w_RW*c_rw[t]) + (w_PD*delta_p))))
+            model_pred[t] = max(0, min(100, intercept + (w_RW*c_rw[t]) + (w_PD*c_pd[t])))
 
     # Remove initial baseline trial
     model_pred = model_pred[1:]
@@ -293,7 +974,7 @@ def RWPD_trial (x, *args):
 
     return [nlls, model_pred, sigma_vec, confidence]
 
-def RWPD (x, *args):
+def RWPDv2 (x, *args):
 
     """
     Confidence is updated as the weighted sum of: (1)
@@ -301,12 +982,13 @@ def RWPD (x, *args):
     the change in performance since the last trial (delta P).
     """
 
-    alpha, sigma, bias, w_RW, w_PD = x
+    alpha, sigma, bias, w_RW, w_PD, intercept, alpha_p = x
     confidence, feedback, n_trials, performance, trial_index = args
 
     sigma_vec = np.full(n_trials, sigma)  # vector for standard deviation
     model_pred = np.zeros(n_trials)
     c_rw = np.zeros(n_trials)
+    c_pd = np.zeros(n_trials)
     # Small value to avoid division by 0
     epsilon = 1e-10
     for t in range(n_trials):
@@ -316,6 +998,7 @@ def RWPD (x, *args):
             # Trial included to get previous feedback and performance
             model_pred[t] = bias
             c_rw[t] = bias
+            c_pd[t] = bias
         else:
             # Get previous feedback (f) and confidence estimate (c)
             f = feedback[t-1]
@@ -327,13 +1010,13 @@ def RWPD (x, *args):
             # Ensure c_rw is between 0 and 100.
             c_rw[t] = max(0, min(100, c_rw[t]))
 
-            # Get performance delta
-            delta_p = performance[t] - performance[t-1]
+            # Get confidence estimate based on performance delta
+            c_pd[t] = c_pd[t-1] + alpha_p*(performance[t] - c_pd[t-1])
 
-            # Encure delta_p is between -100 and 100.
-            delta_p = max(-100, min(100, delta_p))
+            # Encure c_p[t] is between -100 and 100.
+            c_pd[t] = max(-100, min(100, c_pd[t]))
 
-            model_pred[t] = max(0, min(100, int((w_RW*c_rw[t]) + (w_PD*delta_p))))
+            model_pred[t] = max(0, min(100, intercept + (w_RW*c_rw[t]) + (w_PD*c_pd[t])))
 
     # Remove initial baseline trial
     model_pred = model_pred[1:]
@@ -347,6 +1030,174 @@ def RWPD (x, *args):
     nlls = -np.log(probabilities + epsilon)
 
     return np.sum(nlls[trial_index])
+
+# =============================================================================
+#
+# def RWPD_sim (x, *args):
+#
+#     """
+#     Sim RWPD model retuning simulated confidence estimates
+#     alpha, sigma, w_RW, w_PD = x
+#     confidence, feedback, n_trials, performance = args
+#     """
+#
+#     alpha, sigma, w_RW, w_PD, intercept = x
+#     confidence, feedback, n_trials, performance = args
+#
+#     model_pred = np.zeros(n_trials)
+#     c_rw = np.zeros(n_trials)
+#     conf_vec = np.zeros(n_trials)
+#     for t in range(n_trials):
+#
+#         if t == 0:
+#             # The probability mean for the first trial
+#             model_pred[t] = confidence[t]
+#             c_rw[t] = confidence[t]
+#             conf_vec[t] = confidence[t]
+#         else:
+#             # Get previous feedback (f) and confidence estimate (c)
+#             f = feedback[t-1]
+#             c = int(c_rw[t-1])
+#
+#             PE = f - c  # Prediction error
+#             c_rw[t] = c + alpha*PE  # Update rule
+#
+#             # Ensure c_rw is between 0 and 100.
+#             c_rw[t] = max(0, min(100, c_rw[t]))
+#
+#             # Get performance delta
+#             delta_p = performance[t] - performance[t-1]
+#
+#             # Encure delta_p is between -100 and 100.
+#             delta_p = max(-100, min(100, delta_p))
+#
+#             model_pred[t] = max(0, min(100, intercept + int((w_RW*c_rw[t]) + (w_PD*delta_p))))
+#
+#             # Calculate probabilities across different options (p_options)
+#             conf_sim, p_options = sim_norm_prob_vectorized(
+#                                                      np.array([model_pred[t]]),
+#                                                      np.array([sigma]),
+#                                                      lower_bound=0,
+#                                                      upper_bound=100)
+#             conf_vec[t] = conf_sim[0]
+#
+#     return conf_vec
+#
+# def RWPD_trial (x, *args):
+#
+#     """
+#     Confidence is updated as the weighted sum of: (1) confidence updated by a
+#     rescorla-wagner updated rule (C_RW) and (2) the change in performance
+#     since the last trial (delta P).
+#
+#     return list of vectors
+#     """
+#
+#     alpha, sigma, bias, w_RW, w_PD, intercept = x
+#     confidence, feedback, n_trials, performance = args
+#
+#     sigma_vec = np.full(n_trials, sigma)  # vector for standard deviation
+#     model_pred = np.zeros(n_trials)
+#     c_rw = np.zeros(n_trials)
+#     # Small value to avoid division by 0
+#     epsilon = 1e-10
+#     for t in range(n_trials):
+#
+#         if t == 0:
+#             # The probability mean for the first trial (bias) is fit
+#             # Trial included to get previous feedback and performance
+#             model_pred[t] = bias
+#             c_rw[t] = bias
+#
+#         else:
+#
+#             # Get previous confidence value and feedback,
+#             f = feedback[t-1]
+#             c = int(c_rw[t-1])
+#
+#             PE = f - c  # Prediction error
+#             c_rw[t] = c + alpha*PE  # Update rule
+#
+#             # Encure c_rw is between 0 and 100.
+#             c_rw[t] = max(0, min(100, c_rw[t]))
+#
+#             # Get delta performance
+#             delta_p = performance[t] - performance[t-1]
+#
+#             # Encure delta_p is between -100 and 100.
+#             delta_p = max(-100, min(100, delta_p))
+#
+#             # Get the prediction as the weighted sum
+#             model_pred[t] = max(0, min(100, intercept + int((w_RW*c_rw[t]) + (w_PD*delta_p))))
+#
+#     # Remove initial baseline trial
+#     model_pred = model_pred[1:]
+#     sigma_vec = sigma_vec[1:]
+#     confidence = confidence[1:]
+#
+#     # Calculate probabilities and Negative log likelihood (NLL)
+#     probabilities, y_values = calc_norm_prob_vectorized(confidence,
+#                                                         model_pred,
+#                                                         sigma_vec)
+#     nlls = -np.log(probabilities + epsilon)
+#
+#     return [nlls, model_pred, sigma_vec, confidence]
+#
+# def RWPD (x, *args):
+#
+#     """
+#     Confidence is updated as the weighted sum of: (1)
+#     confidence updated by a rescorla-wagner updated rule (C_RW) and (2)
+#     the change in performance since the last trial (delta P).
+#     """
+#
+#     alpha, sigma, bias, w_RW, w_PD, intercept = x
+#     confidence, feedback, n_trials, performance, trial_index = args
+#
+#     sigma_vec = np.full(n_trials, sigma)  # vector for standard deviation
+#     model_pred = np.zeros(n_trials)
+#     c_rw = np.zeros(n_trials)
+#     # Small value to avoid division by 0
+#     epsilon = 1e-10
+#     for t in range(n_trials):
+#
+#         if t == 0:
+#             # The probability mean for the first trial (bias) is fit
+#             # Trial included to get previous feedback and performance
+#             model_pred[t] = bias
+#             c_rw[t] = bias
+#         else:
+#             # Get previous feedback (f) and confidence estimate (c)
+#             f = feedback[t-1]
+#             c = int(c_rw[t-1])
+#
+#             PE = f - c  # Prediction error
+#             c_rw[t] = c + alpha*PE  # Update rule
+#
+#             # Ensure c_rw is between 0 and 100.
+#             c_rw[t] = max(0, min(100, c_rw[t]))
+#
+#             # Get performance delta
+#             delta_p = performance[t] - performance[t-1]
+#
+#             # Encure delta_p is between -100 and 100.
+#             delta_p = max(-100, min(100, delta_p))
+#
+#             model_pred[t] = max(0, min(100, intercept + int((w_RW*c_rw[t]) + (w_PD*delta_p))))
+#
+#     # Remove initial baseline trial
+#     model_pred = model_pred[1:]
+#     sigma_vec = sigma_vec[1:]
+#     confidence = confidence[1:]
+#
+#     # Calculate probabilities and Negative log likelihood (NLL)
+#     probabilities, y_values = calc_norm_prob_vectorized(confidence,
+#                                                         model_pred,
+#                                                         sigma_vec)
+#     nlls = -np.log(probabilities + epsilon)
+#
+#     return np.sum(nlls[trial_index])
+# =============================================================================
 
 def RWCK_sim(x, *args):
 
@@ -621,7 +1472,8 @@ def RWCK(x, *args):
             nlls[t] = -np.log(probabilities[int(confidence[t])])
 
         if t > 0:
-            # Update "value" --------------------------------------------
+
+            # Update RW estimate  --------------------------------------
 
             # Get previous confidence value and feedback,
             f = feedback[t-1]
@@ -642,9 +1494,8 @@ def RWCK(x, *args):
                                                     lower_bound=0,
                                                     upper_bound=100)
 
-            # -----------------------------------------------------------
+            # Update choice kernels -------------------------------------
 
-            # Update choice kernels
             for k in range(101):
 
                 # Update rule
@@ -655,9 +1506,8 @@ def RWCK(x, *args):
             smoothed_choice_kernels = gaussian_filter1d(choice_kernels,
                                                         sigma_ck)
 
-            # -----------------------------------------------------------
+            # Combine RW update and CK update ---------------------------
 
-            # Combine RW update and CK update
             p = np.zeros(len(p_options[0]))
             for i, (v_k, ck_k) in enumerate(zip(p_options[0],
                                                 smoothed_choice_kernels)):
