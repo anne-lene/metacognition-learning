@@ -100,6 +100,36 @@ def load_fit_on_sim_df(EXP, custom_relative_path=False):
 
     return pd.read_excel(file_path)
 
+def load_fit_on_data_df(EXP, custom_relative_path=False):
+    """
+    Load a CSV file using a relative path based on the script's location.
+
+    Parameters:
+        relative_path (str or Path): Relative path to the CSV file from the
+        directory of this script.
+
+    Returns:
+        pandas.DataFrame: The loaded DataFrame.
+    """
+
+    # Get the directory of the current script
+    script_dir = os.path.dirname(os.path.abspath(__file__))
+
+    # Relative path
+    if custom_relative_path:
+        relative_path = custom_relative_path
+    else:
+        if EXP == 1:
+            relative_path = "../results/Fixed_feedback/model_comparison/models_fit_to_data/model_fits_EXP1_data.xlsx"
+        elif EXP == 2:
+            relative_path = "../results/variable_feedback/model_comparison/models_fit_to_data/model_fits_EXP2_data.xlsx"
+        else:
+            raise ValueError("EXP needs to be 1 or 2")
+
+    # Construct the full path to the CSV file
+    file_path = os.path.normpath(os.path.join(script_dir, relative_path))
+
+    return pd.read_excel(file_path)
 
 def add_session_column(df, condition_col='condition'):
 

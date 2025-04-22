@@ -17,43 +17,25 @@ from matplotlib import pyplot as plt
 from tqdm import tqdm
 import os
 import scipy.stats as stats
-from src.utility_functions import add_session_column
-from src.models import (fit_model,
-                        fit_model_with_cv,
-                        fit_random_model,
-                        random_model,
-                        random_model_w_bias,
-                        win_stay_lose_shift,
-                        rw_symmetric_LR,
-                        choice_kernel,
-                        RW_choice_kernel,
-                        delta_P_RW)
+from statsmodels.stats.multitest import multipletests
+
+from src.utils import (add_session_column, load_fit_on_data_df, load_df)
 
 # Import data - Fixed feedback condition (Experiment 1)
-current_directory = os.path.dirname(os.path.abspath(__file__))
-parent_directory = os.path.dirname(current_directory)
-grandparent_directory = os.path.dirname(parent_directory)
-project_path = grandparent_directory
-fixed_feedback_data_path = r'fixed_feedback/data/cleaned'
-data_file = r'main-20-12-14-processed_filtered.csv'
-full_path = os.path.join(project_path, fixed_feedback_data_path, data_file)
-
-#%% Read the metrics from the Excel file and assign to variables
-local_folder = r'C:\Users\carll\OneDrive\Skrivbord\Oxford\DPhil'
-working_dir = r'metacognition-learning\comparative_models'
-save_path = r'results\fixed_feedback\model_comparison'
-name = 'model_metrics_sessions_CV.xlsx' #'model_metrics_CV_concatenated.xlsx'
-#save_path_full = os.path.join(local_folder, working_dir, save_path, name)
-save_path_full = os.path.join('scripts', name)
-df_m = pd.read_excel(save_path_full)
-
-# Select only the numeric columns
-numeric_columns = df_m.select_dtypes(include=['number']).columns
-
-# Group by 'pid' and calculate the mean for numeric columns only
-df_avg_per_pid = df_m.groupby('pid')[numeric_columns].mean().reset_index()
-
-df_m = df_avg_per_pid
+#%% Load in the data
+df = load_fit_on_data_df(EXP=1)
+df_full = df.copy()
+# =============================================================================
+# #%% Average metrics for each participants
+# # Select only the numeric columns
+# numeric_columns = df.select_dtypes(include=['number']).columns
+#
+# # Group by 'pid' and calculate the mean for numeric columns only
+# df_avg_per_pid = df.groupby('pid')[numeric_columns].mean().reset_index()
+#
+# df = df_avg_per_pid
+#
+# =============================================================================
 #%% Relative fit
 
 def calculate_mean_sem(data):
@@ -63,21 +45,26 @@ def calculate_mean_sem(data):
 
 # List of models and their corresponding metrics in the DataFrame
 models_metrics = [
-    ['random', 'nll_array_random_p', 'aic_array_random_p', 'bic_array_random_p'],
-    ['bias', 'nll_array_bias_p', 'aic_array_bias_p', 'bic_array_bias_p'],
-    ['win_stay', 'nll_array_win_stay_p', 'aic_array_win_stay_p', 'bic_array_win_stay_p'],
-    #['rw_static', 'nll_array_rw_static_p', 'aic_array_rw_static_p', 'bic_array_rw_static_p'],
-    ['rw_symm', 'nll_array_rw_symm_p', 'aic_array_rw_symm_p', 'bic_array_rw_symm_p'],
-    #['rw_cond', 'nll_array_rw_cond_p', 'aic_array_rw_cond_p', 'bic_array_rw_cond_p'],
-    ['ck', 'nll_array_ck_p', 'aic_array_ck_p', 'bic_array_ck_p'],
-    ['rwck', 'nll_array_rwck_p', 'aic_array_rwck_p', 'bic_array_rwck_p'],
-    ['delta_p_rw', 'nll_array_delta_p_rw_p', 'aic_array_delta_p_rw_p', 'bic_array_delta_p_rw_p'],
+    ['random', 'nll_random', 'aic_random', 'bic_random'],
+    ['bias', 'nll_bias', 'aic_bias', 'bic_bias'],
+    ['win_stay', 'nll_win_stay', 'aic_win_stay', 'bic_win_stay'],
+    ['rw_symm', 'nll_rw_symm', 'aic_rw_symm', 'bic_rw_symm'],
+    ['rw_cond', 'nll_rw_cond', 'aic_rw_cond', 'bic_rw_cond'],
+    ['ck', 'nll_ck', 'aic_ck', 'bic_ck'],
+    ['rwck', 'nll_rwck', 'aic_rwck', 'bic_rwck'],
+    ['rwp', 'nll_rwp', 'aic_rwp', 'bic_rwp'],
+    ['rwfp', 'nll_rwfp', 'aic_rwfp', 'bic_rwfp'],
+    ['lmf', 'nll_lmf', 'aic_lmf', 'bic_lmf'],
+    ['lmp', 'nll_lmp', 'aic_lmp', 'bic_lmp'],
+    ['lmfp', 'nll_lmfp', 'aic_lmfp', 'bic_lmfp'],
 ]
+
 
 # Dictionary to store the results
 results = {}
 
 # Adjust the fits for each participant based on the best model for each metric
+df_m = df.copy()
 df_m['participant_id'] = df_m.index.values
 participants = df_m['participant_id'].unique()
 for participant in participants:
@@ -123,39 +110,55 @@ for model, nll_col, aic_col, bic_col in models_metrics:
     exec(f'{model}_model_mean_bic = {mean_bic}')
     exec(f'{model}_model_sem_bic = {sem_bic}')
 
+# Summary table
+summary = pd.DataFrame([
+    {
+        "model": model,
+        "mean_nll": results[f"{model}_model_mean_nll"],
+        "sem_nll": results[f"{model}_model_sem_nll"],
+        "mean_aic": results[f"{model}_model_mean_aic"],
+        "sem_aic": results[f"{model}_model_sem_aic"],
+        "mean_bic": results[f"{model}_model_mean_bic"],
+        "sem_bic": results[f"{model}_model_sem_bic"]
+    }
+    for model, *_ in models_metrics
+])
 
 #%% Pairwise model comparison
 
-import numpy as np
-import pandas as pd
-import seaborn as sns
-import matplotlib.pyplot as plt
-from scipy.stats import shapiro, ttest_rel, wilcoxon
-from statsmodels.stats.multitest import multipletests
-
-# Assuming nll_array_*_p are defined elsewhere
-model_names = [
-    "Random", "Biased", "Win-Stay-Lose-Shift",
-    "RW", "Choice Kernel",
-    "RW + Choice Kernel", "RW + Performance Delta",
+# List of models: (Display name, NLL column name, color)
+model_info = [
+    ("Random", "nll_random", '#1f77b4'),           # blue
+    ("Bias", "nll_bias", '#2ca02c'),               # green
+    ("Win-Stay-Lose-Shift", "nll_win_stay", '#d62728'), # red
+    ("RW", "nll_rw_symm", '#9467bd'),  # purple
+    #("RW (Condition)", "nll_rw_cond", '#8c564b'),  # brown
+    ("Choice Kernel", "nll_ck", '#e377c2'),        # pink
+    ("RW + CK", "nll_rwck", '#ff7f0e'),            # orange
+    ("RW + Performance", "nll_rwp", '#7f7f7f'),    # grey
+    ("RW + Feedback + Performance", "nll_rwfp", '#bcbd22'),  # yellow-green
+    ("LM of Feedback", "nll_lmf", '#17becf'),      # teal
+    ("LM of Performance", "nll_lmp", '#aec7e8'),   # light blue
+    ("LM of Feedback + Performance", "nll_lmfp", '#ffbb78'), # peach
 ]
 
-# Define color mapping
-color_mapping = {
-    "Random": '#0000ff',
-    "Biased": '#008000',
-    "Win-Stay-Lose-Shift": '#ff0000',
-    "RW": '#800080',
-    "Choice Kernel": '#ffc0cb',
-    "RW + Choice Kernel": '#ffa500',
-    "RW + Performance Delta": '#c0c0c0'
-}
+# Extract names, values, and colors
+model_names = [name for name, _, _ in model_info]
+model_columns = [col for _, col, _ in model_info]
+color_mapping = {name: color for name, _, color in model_info}
 
-model_values = [
-    nll_array_random_p, nll_array_bias_p, nll_array_win_stay_p,
-    nll_array_rw_symm_p, nll_array_ck_p,
-    nll_array_rwck_p, nll_array_delta_p_rw_p
-]
+# Extract NLL arrays from your DataFrame
+model_values = [df[col].values for col in model_columns]
+
+# Compute mean NLL per model and sort
+mean_nlls = {name: np.mean(df[col]) for name, col, _ in model_info}
+sorted_model_info = sorted(model_info, key=lambda x: mean_nlls[x[0]])
+
+# Rebuild all lists in sorted order
+model_names = [name for name, _, _ in sorted_model_info]
+model_columns = [col for _, col, _ in sorted_model_info]
+color_mapping = {name: color for name, _, color in sorted_model_info}
+model_values = [df[col].values for col in model_columns]
 
 # Perform pairwise statistical tests between all models
 pairwise_results = []
@@ -244,22 +247,32 @@ for i in range(len(model_names)):
 handles = [plt.Rectangle((0, 0), 1, 1, color=color_mapping[name], alpha=0.5)
            for name in model_names]
 labels = model_names
-plt.legend(handles, labels, title="Models", bbox_to_anchor=(1.05, 1.022),
-           loc='upper left')
+# =============================================================================
+# plt.legend(handles, labels, title="Models", bbox_to_anchor=(1.05, 1.022),
+#            loc='upper left')
+# =============================================================================
+plt.legend(
+    handles, labels,
+    title="Models",
+    bbox_to_anchor=(-0.5, 1.0),  # move to the left of the plot
+    loc='upper right',            # anchor the top-right corner of the legend
+    borderaxespad=0.
+)
 
 plt.xticks(rotation=45, ha='right')
 
 plt.xlabel('')
 plt.ylabel('')
 
-# Set save path
-result_path = r"results\Fixed_feedback\model_comparison"
-file_name = 'Pairwise_model_comparison_relative_fit_CV.svg'
-save_path = os.path.join(result_path, file_name)
+# Construct the full path to the file
+relative_path = r"../../results/Fixed_feedback/model_comparison/models_fit_to_data"
 
-#plt.savefig(save_path, bbox_inches='tight', dpi=300)
+file_name = r"Pairwise_model_comparison_relative_fit"
+save_path = os.path.join(relative_path, file_name)
+plt.savefig(f"{save_path}.png", bbox_inches='tight', dpi=300)
 
 plt.show()
+
 
 #%% Stack model comparison means and hist in same figure.
 import seaborn as sns
@@ -278,78 +291,124 @@ font_size = 16
 # Update the default rc parameters for font size
 plt.rcParams.update({'font.size': font_size})
 
-# Prepare data for plotting
-metric = [
-    [nll_array_random_p,
-     nll_array_bias_p,
-     nll_array_win_stay_p,
-     nll_array_rw_symm_p,
-     nll_array_ck_p,
-     nll_array_rwck_p,
-     nll_array_delta_p_rw_p]
+# =============================================================================
+# # Prepare data for plotting
+# metric = [
+#     [nll_random_p,
+#      nll_bias_p,
+#      nll_win_stay_p,
+#      nll_rw_symm_p,
+#      nll_ck_p,
+#      nll_rwck_p,
+#      nll_delta_p_rw_p]
+# ]
+#
+# model_names = [
+#     "Random", "Biased", "Win-Stay-Lose-Shift",
+#     "RW", "Choice Kernel",
+#     "RW + Choice Kernel", "RW + Performance Delta",
+# ]
+#
+# # Define color mapping
+# color_mapping = {
+#     "Random": '#0000ff',
+#     "Biased": '#008000',
+#     "Win-Stay-Lose-Shift": '#ff0000',
+#     "RW": '#800080',
+#     "Choice Kernel": '#ffc0cb',
+#     "RW + Choice Kernel": '#ffa500',
+#     "RW + Performance Delta": '#c0c0c0'
+# }
+#
+# color_mapping_k = {name: "black" for name in model_names}
+#
+# model_values = [
+#     nll_random_p, nll_bias_p, nll_win_stay_p,
+#     nll_rw_symm_p, nll_ck_p, nll_rwck_p,
+#     nll_delta_p_rw_p
+# ]
+# =============================================================================
+
+# Reuse model_info from earlier
+model_info = [
+    ("Random", "nll_random", '#1f77b4'),           # blue
+    ("Bias", "nll_bias", '#2ca02c'),               # green
+    ("Win-Stay-Lose-Shift", "nll_win_stay", '#d62728'), # red
+    ("RW", "nll_rw_symm", '#9467bd'),              # purple
+    ("Choice Kernel", "nll_ck", '#e377c2'),        # pink
+    ("RW + CK", "nll_rwck", '#ff7f0e'),            # orange
+    ("RW + Performance", "nll_rwp", '#7f7f7f'),    # grey
+    ("RW + Feedback + Performance", "nll_rwfp", '#bcbd22'),  # yellow-green
+    ("LM of Feedback", "nll_lmf", '#17becf'),      # teal
+    ("LM of Performance", "nll_lmp", '#aec7e8'),   # light blue
+    ("LM of Feedback + Performance", "nll_lmfp", '#ffbb78'), # peach
 ]
 
-model_names = [
-    "Random", "Biased", "Win-Stay-Lose-Shift",
-    "RW", "Choice Kernel",
-    "RW + Choice Kernel", "RW + Performance Delta",
-]
 
-# Define color mapping
-color_mapping = {
-    "Random": '#0000ff',
-    "Biased": '#008000',
-    "Win-Stay-Lose-Shift": '#ff0000',
-    "RW": '#800080',
-    "Choice Kernel": '#ffc0cb',
-    "RW + Choice Kernel": '#ffa500',
-    "RW + Performance Delta": '#c0c0c0'
-}
-
+# Extract model names, values (assumes variables already defined), and colors
+model_names = [name for name, _, _ in model_info]
+model_values = [globals()[varname] for _, varname, _ in model_info]
+color_mapping = {name: color for name, _, color in model_info}
 color_mapping_k = {name: "black" for name in model_names}
 
-model_values = [
-    nll_array_random_p, nll_array_bias_p, nll_array_win_stay_p,
-    nll_array_rw_symm_p, nll_array_ck_p, nll_array_rwck_p,
-    nll_array_delta_p_rw_p
-]
-
+# Create long-form DataFrame for violin plot
 data = []
-for model_name, nll in zip(model_names, model_values):
-    for value in nll:
-        data.append([model_name, 'NLL', value])
+for model_name, nll_array in zip(model_names, model_values):
+    for val in nll_array:
+        data.append([model_name, 'NLL', val])
 
 df = pd.DataFrame(data, columns=["Model", "Metric", "Value"])
-df['Value'] = [i + 0.00001 for i in df['Value']]
+df['Value'] += 0.00001  # Avoid log(0) issues
 
-# Prepare data for histogram
+# Histogram prep — best model per participant
 score_board = []
 pids = []
-for rand, bias, wsls, rw, ck, rwck, delta_p_rw, pid in zip(metric[0][0],
-                                                           metric[0][1],
-                                                           metric[0][2],
-                                                           metric[0][3],
-                                                           metric[0][4],
-                                                           metric[0][5],
-                                                           metric[0][6],
-                                                           range(len(metric[0][6]))
-                                                           ):
-    scores = np.array([rand, bias, wsls, rw, ck, rwck, delta_p_rw])
-    min_score = np.min(scores)
-    idxs = np.where(scores == min_score)[0]
-    for idx in idxs:
+n_subjects = len(model_values[0])  # Assumes equal length across models
+
+for pid in range(n_subjects):
+    scores = np.array([model[pid] for model in model_values])
+    min_score = scores.min()
+    best_indices = np.where(scores == min_score)[0]
+    for idx in best_indices:
         score_board.append(idx)
         pids.append(pid)
 
-models = ['Random', 'Biased', 'Win-Stay-Loose-Shift', 'RW',
-          'Choice Kernel', 'RW + Choice Kernel', 'RW + Performance Delta']
-counts = [score_board.count(0),  # Random
-          score_board.count(1),  # Bias
-          score_board.count(2),  # WSLS
-          score_board.count(3),  # RW
-          score_board.count(4),  # CK
-          score_board.count(5),  # RWCK
-          score_board.count(6)]  # RWPD
+# Count wins for each model
+counts = [score_board.count(i) for i in range(len(model_names))]
+
+# =============================================================================
+# # Prepare data for histogram
+# score_board = []
+# pids = []
+# for rand, bias, wsls, rw, ck, rwck, delta_p_rw, pid in zip(metric[0][0],
+#                                                            metric[0][1],
+#                                                            metric[0][2],
+#                                                            metric[0][3],
+#                                                            metric[0][4],
+#                                                            metric[0][5],
+#                                                            metric[0][6],
+#                                                            range(len(metric[0][6]))
+#                                                            ):
+#
+#     scores = np.array([rand, bias, wsls, rw, ck, rwck, delta_p_rw])
+#     min_score = np.min(scores)
+#     idxs = np.where(scores == min_score)[0]
+#     for idx in idxs:
+#         score_board.append(idx)
+#         pids.append(pid)
+# =============================================================================
+
+
+models = [
+    "Random", "Bias", "Win-Stay-Lose-Shift", "RW",
+    "Choice Kernel", "RW + CK", "RW + Performance",
+    "RW + Feedback + Performance", "LM of Feedback",
+    "LM of Performance", "LM of Feedback + Performance"
+]
+
+# Compute counts for all models (length should match model_names)
+counts = [score_board.count(i) for i in range(len(model_names))]
+
 
 # Create the figure and subplots
 fig, (ax1, ax2) = plt.subplots(2, 1, figsize=(8, 9), sharex=True, height_ratios=[3,1])
@@ -510,39 +569,40 @@ def annotate_significance(ax, x1, x2, y1_values, y2_values, p_value,
         ax.text((x1 + x2) / 2, y_max*1, sig_level, ha='center', va='bottom',
                 fontsize=14, color='black')
 
-# Annotate significance bars for "RW" model comparisons with "WSLS" and "RW + Performance Delta"
-rw_index = model_names.index("RW")
-wsls_index = model_names.index("Win-Stay-Lose-Shift")
-rw_perf_delta_index = model_names.index("RW + Performance Delta")
-
-for model, model_index in [("Win-Stay-Lose-Shift", wsls_index),
-                           ("RW + Performance Delta", rw_perf_delta_index)]:
-
-    corrected_p_value = pairwise_df_corrected[(pairwise_df_corrected['Model 1'] == "RW") &
-                                              (pairwise_df_corrected['Model 2'] == model)]['Corrected P-Value'].values
-    if len(corrected_p_value) == 0:
-        corrected_p_value = pairwise_df_corrected[(pairwise_df_corrected['Model 1'] == model) &
-                                                  (pairwise_df_corrected['Model 2'] == "RW")]['Corrected P-Value'].values
-
-    if len(corrected_p_value) > 0:
-        y1_values = subset_df[subset_df['Model'] == "RW"]['Value'].values
-        y2_values = subset_df[subset_df['Model'] == model]['Value'].values
-        annotate_significance(ax1,
-                              rw_index + 0.4,
-                              model_index + 0.4,
-                              y1_values,
-                              y2_values,
-                              corrected_p_value[0],
-                              )
-
-print('p_value_rwpd', round(corrected_p_value[0], 6))
+# =============================================================================
+# # Annotate significance bars for "RW" model comparisons with "WSLS" and "RW + Performance Delta"
+# rw_index = model_names.index("RW")
+# wsls_index = model_names.index("Win-Stay-Lose-Shift")
+# #rw_perf_delta_index = model_names.index("RW + Performance Delta")
+#
+# for model, model_index in [("Win-Stay-Lose-Shift", wsls_index),
+#                            ("RW + Performance Delta", rw_perf_delta_index)]:
+#
+#     corrected_p_value = pairwise_df_corrected[(pairwise_df_corrected['Model 1'] == "RW") &
+#                                               (pairwise_df_corrected['Model 2'] == model)]['Corrected P-Value'].values
+#     if len(corrected_p_value) == 0:
+#         corrected_p_value = pairwise_df_corrected[(pairwise_df_corrected['Model 1'] == model) &
+#                                                   (pairwise_df_corrected['Model 2'] == "RW")]['Corrected P-Value'].values
+#
+#     if len(corrected_p_value) > 0:
+#         y1_values = subset_df[subset_df['Model'] == "RW"]['Value'].values
+#         y2_values = subset_df[subset_df['Model'] == model]['Value'].values
+#         annotate_significance(ax1,
+#                               rw_index + 0.4,
+#                               model_index + 0.4,
+#                               y1_values,
+#                               y2_values,
+#                               corrected_p_value[0],
+#                               )
+#
+# print('p_value_rwpd', round(corrected_p_value[0], 6))
+# =============================================================================
 
 ax1.spines['right'].set_visible(False)
 ax1.spines['top'].set_visible(False)
 
 # Second subplot: Histogram
-bar_colors = ['blue', 'green', 'red', 'purple', 'pink', 'orange',
-              'silver']
+bar_colors = [color_mapping[name] for name in model_names]
 bars = ax2.bar(np.arange(len(models)) + 0.25, counts, color=bar_colors)
 ax2.set_xticks(np.arange(len(models)) + 0.25)  # Adjust x-ticks positions
 ax2.set_ylabel('Best model count')
@@ -554,17 +614,325 @@ ax2.spines['top'].set_visible(False)
 plt.tight_layout(pad=2.0)  # Increase padding to prevent overlap
 
 # Adjust xlim
-ax1.set_xlim(-0.5, 7)
+#ax1.set_xlim(-0.5, 7)
 
-# Set save path
-result_path = r"results\fixed_feedback\model_comparison"
-file_name = 'combined_model_comparison_relative_fit_CV.svg'
-save_path = os.path.join(result_path, file_name)
+# Construct the full path to the file
+relative_path = r"../../results/Fixed_feedback/model_comparison/models_fit_to_data"
 
-#plt.savefig(save_path, bbox_inches='tight', dpi=300)
+file_name = r"model_comparison_histogram_violinplot_relative_fit"
+save_path = os.path.join(relative_path, file_name)
+plt.savefig(f"{save_path}.png", bbox_inches='tight', dpi=300)
+
 plt.show()
 
-#%% Plot the alpha of RWPD vs BDI
+#%% RWFP params vs BDI and metacognition
+
+import pandas as pd
+import numpy as np
+import statsmodels.formula.api as smf
+
+# Load trial-level data (with BDI scores)
+df_exp1 = load_df(EXP=1)
+
+# Clean and preprocess
+df_exp1 = df_exp1.groupby('pid').apply(add_session_column).reset_index(drop=True)  # Add session column
+df_exp1 = df_exp1[df_exp1.condition != 'baseline']  # Remove baseline
+df_exp1 = df_exp1.drop_duplicates(subset=['pid', 'trial'], keep='first')  # One row per trial
+df_exp1['abs_error'] = abs(df_exp1['estimate'] - df_exp1['correct'])
+
+# Add previous feedback column (shifted per participant)
+df_exp1 = df_exp1.sort_values(by=['pid', 'session', 'trial'])
+df_exp1['prev_feedback'] = df_exp1.groupby('pid')['feedback'].shift(1)
+
+# Drop rows with NaN in prev_feedback (first trial per participant)
+df_exp1 = df_exp1.dropna(subset=['prev_feedback'])
+
+# Fit LMM to get participant-specific intercepts (metacognitive bias)
+model = smf.mixedlm(
+    "confidence ~ abs_error + prev_feedback",       # fixed effects
+    df_exp1,
+    groups=df_exp1["pid"],
+    re_formula="~ abs_error + prev_feedback"        # random slopes
+)
+result = model.fit()
+
+# Extract random intercepts = metacognitive bias
+intercepts_df = pd.DataFrame({
+    "pid": list(result.random_effects.keys()),
+    "metacognitive_bias": [result.fe_params["Intercept"] + re["Group"]
+                     for re in result.random_effects.values()]
+})
+
+# Merge BDI scores
+bdi_df = df_exp1[['pid', 'bdi']].drop_duplicates(subset='pid')
+
+# Load model fit DataFrame (with RWFP parameters)
+# Make sure df_full has been defined before
+params_df = df_full[['pid', 'alpha_rwfp', 'wf_rwfp', 'wp_rwfp', 'sigma_rwfp',
+                     'bias_rwfp']].drop_duplicates(subset='pid')
+
+# Merge all into a single dataframe
+df_model = params_df.merge(bdi_df, on='pid', how='left')
+df_model = df_model.merge(intercepts_df, on='pid', how='left')
+
+# Check resulting DataFrame
+print(df_model.head())
+
+# Define a function to plot and regress each parameter against BDI and metacognitive bias
+def plot_param_vs_target(df, param, target):
+    model = smf.ols(f"{param} ~ {target}", data=df).fit()
+    slope = model.params[target]
+    r_squared = model.rsquared
+    p_value = model.pvalues[target]
+
+    fig, ax = plt.subplots(figsize=(4, 3.5))
+    sns.regplot(data=df, x=target, y=param, ax=ax,
+                scatter_kws={'s': 40, 'alpha': 0.5}, color='#bcbd22')
+    ax.set_xlabel(target.replace('_', ' '))
+    ax.set_ylabel(param.replace('_', ' '))
+
+    stats_text = f"Slope = {slope:.2f}\n$R^2$ = {r_squared:.2f}\n$p$ = {p_value:.3f}"
+    ax.text(0.05, 0.95, stats_text, transform=ax.transAxes,
+            fontsize=12, verticalalignment='top')
+
+    ax.spines[['top', 'right']].set_visible(False)
+    plt.tight_layout()
+
+    # Construct the full path to the file
+    relative_path = r"../../results/Fixed_feedback/model_comparison/models_fit_to_data"
+
+    file_name = f"{param}_vs_{target}"
+    save_path = os.path.join(relative_path, file_name)
+    plt.savefig(f"{save_path}.png", bbox_inches='tight', dpi=300)
+
+    plt.show()
+
+# Run plots
+for param in ['alpha_rwfp', 'wf_rwfp', 'wp_rwfp', 'sigma_rwfp', 'bias_rwfp']:
+    plot_param_vs_target(df_model, param, 'bdi')
+    plot_param_vs_target(df_model, param, 'metacognitive_bias')
+
+#%%
+import pandas as pd
+import numpy as np
+import statsmodels.formula.api as smf
+import seaborn as sns
+import matplotlib.pyplot as plt
+
+# Load trial-level data (with BDI scores)
+df_exp1 = load_df(EXP=1)
+
+# Clean and preprocess
+df_exp1 = df_exp1.groupby('pid').apply(add_session_column).reset_index(drop=True)
+df_exp1 = df_exp1[df_exp1.condition != 'baseline']
+df_exp1 = df_exp1.drop_duplicates(subset=['pid', 'trial'], keep='first')
+df_exp1['abs_error'] = abs(df_exp1['estimate'] - df_exp1['correct'])
+
+# Add previous feedback column (shifted per participant)
+df_exp1 = df_exp1.sort_values(by=['pid', 'session', 'trial'])
+df_exp1['prev_feedback'] = df_exp1.groupby('pid')['feedback'].shift(1)
+df_exp1 = df_exp1.dropna(subset=['prev_feedback'])
+
+# Fit LMM to get participant-specific intercepts (metacognitive bias)
+model = smf.mixedlm(
+    "confidence ~ abs_error + prev_feedback",
+    df_exp1,
+    groups=df_exp1["pid"],
+    re_formula="~ abs_error + prev_feedback"
+)
+result = model.fit()
+
+# Extract random intercepts = metacognitive bias
+intercepts_df = pd.DataFrame({
+    "pid": list(result.random_effects.keys()),
+    "Metacognitive_Bias": [result.fe_params["Intercept"] + re["Group"]
+                            for re in result.random_effects.values()]
+})
+
+# Merge BDI scores
+bdi_df = df_exp1[['pid', 'bdi']].drop_duplicates(subset='pid')
+
+# Load model fit DataFrame (with RWFP parameters)
+params_df = df_full[['pid', 'alpha_rwfp', 'wf_rwfp', 'wp_rwfp', 'sigma_rwfp',
+                     'bias_rwfp']].drop_duplicates(subset='pid')
+
+# Merge all into a single dataframe
+df_model = params_df.merge(bdi_df, on='pid', how='left')
+df_model = df_model.merge(intercepts_df, on='pid', how='left')
+
+# Check resulting DataFrame
+print(df_model.head())
+
+# Function to plot and regress metacognitive bias and BDI on each parameter
+def plot_target_vs_param(df, target, param):
+    model = smf.ols(f"{target} ~ {param}", data=df).fit()
+    slope = model.params[param]
+    r_squared = model.rsquared
+    p_value = model.pvalues[param]
+
+    fig, ax = plt.subplots(figsize=(4, 3.5))
+    sns.regplot(data=df, x=param, y=target, ax=ax,
+                scatter_kws={'s': 40, 'alpha': 0.5}, color='#bcbd22')
+    ax.set_xlabel(param.replace('_', ' '))
+    ax.set_ylabel(target.replace('_', ' '))
+
+    stats_text = f"Slope = {slope:.2f}\n$R^2$ = {r_squared:.2f}\n$p$ = {p_value:.3f}"
+    ax.text(0.05, 0.95, stats_text, transform=ax.transAxes,
+            fontsize=12, verticalalignment='top')
+
+    ax.spines[['top', 'right']].set_visible(False)
+    plt.tight_layout()
+
+    # Save figure
+    relative_path = r"../../results/Fixed_feedback/model_comparison/models_fit_to_data"
+    file_name = f"{target}_vs_{param}"
+    save_path = os.path.join(relative_path, file_name)
+    plt.savefig(f"{save_path}.png", bbox_inches='tight', dpi=300)
+
+    plt.show()
+
+
+# Run regressions and plots
+for param in ['alpha_rwfp', 'wf_rwfp', 'wp_rwfp', 'sigma_rwfp', 'bias_rwfp']:
+    plot_target_vs_param(df_model, 'bdi', param)
+    plot_target_vs_param(df_model, 'Metacognitive_Bias', param)
+
+
+#%% Mediation analysis
+import pingouin as pg
+
+# Example: test if wf_rwfp affects BDI via metacog_bias
+med_df = df_model[['wp_rwfp', 'metacog_bias', 'bdi']].dropna()
+
+med_result = pg.mediation_analysis(data=med_df,
+                                   x='wp_rwfp',
+                                   m='metacog_bias',
+                                   y='bdi',
+                                   alpha=0.05,
+                                   n_boot=5000,
+                                   seed=42)
+
+print(med_result)
+
+#%%
+model = smf.ols("bdi ~ alpha_rwfp + wf_rwfp + wp_rwfp + sigma_rwfp + bias_rwfp", data=df_model).fit()
+print(model.summary())
+
+#%% WSLS params vs BDI and metacognitive bias
+
+# Load trial-level data (with BDI scores)
+df_exp1 = load_df(EXP=1)
+
+# Clean and preprocess
+df_exp1 = df_exp1.groupby('pid').apply(add_session_column).reset_index(drop=True)  # Add session column
+df_exp1 = df_exp1[df_exp1.condition != 'baseline']  # Remove baseline
+df_exp1 = df_exp1.drop_duplicates(subset=['pid', 'trial'], keep='first')  # One row per trial
+df_exp1['abs_error'] = abs(df_exp1['estimate'] - df_exp1['correct'])
+
+# Add previous feedback column (shifted per participant)
+df_exp1 = df_exp1.sort_values(by=['pid', 'session', 'trial'])
+df_exp1['prev_feedback'] = df_exp1.groupby('pid')['feedback'].shift(1)
+
+# Drop rows with NaN in prev_feedback (first trial per participant)
+df_exp1 = df_exp1.dropna(subset=['prev_feedback'])
+
+# Fit LMM to get participant-specific intercepts (metacognitive bias)
+model = smf.mixedlm(
+    "confidence ~ abs_error + prev_feedback",       # fixed effects
+    df_exp1,
+    groups=df_exp1["pid"],
+    re_formula="~ abs_error + prev_feedback"        # random slopes
+)
+result = model.fit()
+
+intercepts_df = pd.DataFrame({
+    "pid": list(result.random_effects.keys()),
+    "metacog_bias": [result.fe_params["Intercept"] + re["Group"]
+                     for re in result.random_effects.values()]
+})
+
+# Merge into one dataframe
+params_df = df_full[['pid', 'std_WSLS', 'win_boundary_WSLS']]
+bdi_df = df_exp1[['pid', 'bdi']].drop_duplicates(subset='pid')
+df_model = params_df.merge(bdi_df, on='pid', how='left')
+df_model = df_model.merge(intercepts_df, on='pid', how='left')
+
+# Run for both WSLS parameters vs BDI and metacog bias
+for param in ['std_WSLS', 'win_boundary_WSLS']:
+    plot_param_vs_target(df_model, param, 'bdi')
+    plot_param_vs_target(df_model, param, 'metacog_bias')
+
+
+#%% Condition specific correlations
+
+
+# Choose your condition of interest
+condition_of_interest = 'neg'  # or 'pos', 'neg'
+
+# Load trial-level data
+df_exp1 = load_df(EXP=1)
+df_exp1 = df_exp1.groupby('pid').apply(add_session_column).reset_index(drop=True)
+
+# Preprocess
+df_exp1 = df_exp1[df_exp1['condition'] == condition_of_interest]
+df_exp1 = df_exp1.drop_duplicates(subset=['pid', 'trial'], keep='first')
+df_exp1['abs_error'] = abs(df_exp1['estimate'] - df_exp1['correct'])
+df_exp1 = df_exp1.sort_values(by=['pid', 'session', 'trial'])
+df_exp1['prev_feedback'] = df_exp1.groupby('pid')['feedback'].shift(1)
+df_exp1 = df_exp1.dropna(subset=['prev_feedback'])
+
+# Fit LMM to estimate metacognitive bias (random intercepts)
+model = smf.mixedlm("confidence ~ abs_error + prev_feedback",
+                    df_exp1, groups=df_exp1["pid"],
+                    re_formula="~ abs_error + prev_feedback")
+result = model.fit()
+
+# Extract participant-level bias
+intercepts_df = pd.DataFrame({
+    "pid": result.random_effects.keys(),
+    "metacognitive_bias": [result.fe_params["Intercept"] + re["Group"]
+                           for re in result.random_effects.values()]
+})
+
+# Extract model parameters and BDI
+bdi_df = df_exp1[['pid', 'bdi']].drop_duplicates(subset='pid')
+params_df = df_full[['pid', 'alpha_rwfp', 'wf_rwfp', 'wp_rwfp', 'sigma_rwfp', 'bias_rwfp']].drop_duplicates(subset='pid')
+
+# Merge into single analysis dataframe
+df_model = params_df.merge(bdi_df, on='pid', how='left')
+df_model = df_model.merge(intercepts_df, on='pid', how='left')
+
+# --- Plot and analyze correlations
+def plot_param_vs_target(df, param, target):
+    model = smf.ols(f"{param} ~ {target}", data=df).fit()
+    slope = model.params[target]
+    r_squared = model.rsquared
+    p_value = model.pvalues[target]
+
+    fig, ax = plt.subplots(figsize=(4, 3.5))
+    sns.regplot(data=df, x=target, y=param, ax=ax,
+                scatter_kws={'s': 40, 'alpha': 0.5}, color='#bcbd22')
+    ax.set_xlabel(target.replace('_', ' '))
+    ax.set_ylabel(param.replace('_', ' '))
+
+    stats_text = f"Slope = {slope:.2f}\n$R^2$ = {r_squared:.2f}\n$p$ = {p_value:.3f}"
+    ax.text(0.05, 0.95, stats_text, transform=ax.transAxes,
+            fontsize=12, verticalalignment='top')
+    ax.spines[['top', 'right']].set_visible(False)
+    plt.tight_layout()
+
+    save_dir = f"../../results/Fixed_feedback/model_comparison/{condition_of_interest}"
+    os.makedirs(save_dir, exist_ok=True)
+    save_path = os.path.join(save_dir, f"{param}_vs_{target}_{condition_of_interest}.png")
+    plt.savefig(save_path, bbox_inches='tight', dpi=300)
+    plt.show()
+
+# Run plots
+for param in  ['alpha_rwfp', 'wf_rwfp', 'wp_rwfp', 'sigma_rwfp', 'bias_rwfp']:
+    plot_param_vs_target(df_model, param, 'bdi')
+    plot_param_vs_target(df_model, param, 'metacognitive_bias')
+
+#%% Plot the alpha of RW vs BDI
 
 
 # Define the font size parameter
@@ -596,7 +964,7 @@ for participant in tqdm(df.pid.unique()[:], total=len(df.pid.unique()[:])):
 bdi = np.array(bdi)
 
 if best_fits:
-    x = df_m.alpha_array_delta_p_rw_p[pid_rwpd_best.values]
+    x = df_m.alpha_delta_p_rw_p[pid_rwpd_best.values]
     y = bdi[pid_rwpd_best.values]
 else:
     x = df_m.alpha_array_delta_p_rw_p.values

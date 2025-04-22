@@ -629,7 +629,7 @@ def main(df):
     }
 
     # Use multiprocessing to process each participant in parallel
-    with Pool(48) as pool:
+    with Pool(1) as pool:
         for sim_id, metrics in tqdm(pool.map(process_session, df_list),
                                         total=len(df_list)):
 
@@ -656,7 +656,7 @@ def main(df):
 
     # Construct the full path to the file
     file_path = os.path.normpath(os.path.join(script_dir, relative_path))
-    file_name = r"model_fits_EXP2_sim"
+    file_name = r"model_fits_EXP2_sim_test2"
     save_path = os.path.join(relative_path, file_path, file_name)
 
     # Construct and save dataframe

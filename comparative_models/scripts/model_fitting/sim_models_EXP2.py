@@ -5,7 +5,7 @@ Created on Sat Oct 26 02:44:41 2024
 @author: carll
 """
 
-# Simulating models on paramters drawn randomly from best-fit parameter range
+#%% Simulating models on paramters drawn randomly from best-fit parameter range
 import os
 import numpy as np
 import pandas as pd
@@ -473,11 +473,9 @@ if __name__ == '__main__':
 
     # Construct the full path to the CSV file
     file_path = os.path.normpath(os.path.join(script_dir, relative_path))
-    file_name = r"model_simulations_EXP2"
+    file_name = r"model_simulations_EXP2_test"
     save_path = os.path.join(relative_path, file_path, file_name)
 
     # Save simulated data
     merged_df.to_csv(f'{save_path}.csv', index=False)
-
-
 

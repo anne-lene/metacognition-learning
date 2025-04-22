@@ -8,7 +8,7 @@ Created on Fri Dec 15 12:33:30 2023
 # Analysis
 
 import numpy as np
-from src.utility_functions import (add_session_column)
+from src.utils import (add_session_column, load_df)
 import pandas as pd
 from matplotlib import pyplot as plt
 import os
@@ -19,16 +19,20 @@ import scipy.stats as stats
 from scipy.stats import mannwhitneyu
 
 # Import data
-current_directory = os.path.dirname(os.path.abspath(__file__))
-parent_directory = os.path.dirname(current_directory)
-grandparent_directory = os.path.dirname(parent_directory)
-project_path = grandparent_directory
-experiment_path = r"fixed_feedback"
-fixed_feedback_data_path = r'data/cleaned'
-data_file = r'main-20-12-14-processed_filtered.csv'
-full_path = os.path.join(project_path, experiment_path,
-                         fixed_feedback_data_path, data_file)
-df = pd.read_csv(full_path, low_memory=False)
+# =============================================================================
+# current_directory = os.path.dirname(os.path.abspath(__file__))
+# parent_directory = os.path.dirname(current_directory)
+# grandparent_directory = os.path.dirname(parent_directory)
+# project_path = grandparent_directory
+# experiment_path = r"fixed_feedback"
+# fixed_feedback_data_path = r'data/cleaned'
+# data_file = r'main-20-12-14-processed_filtered.csv'
+# full_path = os.path.join(project_path, experiment_path,
+#                          fixed_feedback_data_path, data_file)
+# df = pd.read_csv(full_path, low_memory=False)
+# =============================================================================
+
+df = load_df(EXP=1)
 
 # Add session column
 df = df.groupby('pid').apply(add_session_column).reset_index(drop=True)
@@ -238,8 +242,8 @@ df_a = pd.DataFrame({'error_baseline': error_baseline_list,
 # save_path = os.path.join(project_path, r"Fixed_feedback_data.csv")
 # df_a.to_csv(save_path, index=False)
 # =============================================================================
-save_path = os.path.join(project_path, 'Fixed_feedback_data.json')
-df_a.to_json(save_path, orient='records', lines=True)
+#save_path = os.path.join(project_path, 'Fixed_feedback_data.json')
+#df_a.to_json(save_path, orient='records', lines=True)
 # Initialize variables
 conditions = ['neut', 'pos', 'neg']
 colors = {'neut': 'grey', 'pos': 'green', 'neg': 'red'}
@@ -256,12 +260,12 @@ sem_baseline = {cond: [] for cond in conditions}
 
 
 # Plotting
-fig, ax = plt.subplots(figsize=(10, 5))
+fig, ax = plt.subplots(figsize=(5, 4))
 
 # Set the font size globally
-plt.rcParams.update({'font.size': 15})
-plt.rcParams['xtick.labelsize'] = 15 # For x-axis tick labels
-plt.rcParams['ytick.labelsize'] = 15  # For y-axis tick labels
+#plt.rcParams.update({'font.size': 15})
+#plt.rcParams['xtick.labelsize'] = 15 # For x-axis tick labels
+#lt.rcParams['ytick.labelsize'] = 15  # For y-axis tick labels
 
 # Process trial and baseline data
 for cond in conditions:
@@ -300,7 +304,7 @@ for cond in conditions:
     combined_sem = list(baseline_sem) + sem_trial
 
     # Plot combined baseline and trial data as a continuous line
-    ax.plot(x_combined, combined_mean, label=f'{cond.capitalize()} Condition',
+    ax.plot(x_combined, combined_mean, label=f'{cond.capitalize()}',
             color=colors[cond], lw=2, marker='o')
     ax.fill_between(x_combined,
                     [m - s for m, s in zip(combined_mean, combined_sem)],
@@ -308,15 +312,90 @@ for cond in conditions:
                     color=colors[cond], alpha=0.2)
 
 #ax.set_title('Mean Confidence Across Conditions')
-ax.set_xlabel('Trials relative to start of task trials')
+ax.set_xlabel('Trials relative to start of feedback trials')
 ax.set_ylabel('Confidence (mean+-SEM)')
-ax.legend()
+ax.legend(fontsize=14)
+ax.spines[['top', 'right']].set_visible(False)
+ax.axvline(0, ls='--', c='k', label='Start of Task Trials',
+           alpha=0.5)
+
+plt.tight_layout()
+save_folder = r"C:/Users/carll/OneDrive/Skrivbord/Oxford/DPhil/metacognition-learning/comparative_models/results/Fixed_feedback/analysis"
+file_name = 'mean_confidence_over_trials'
+save_path = os.path.join(save_folder, file_name)
+fig.savefig(f'{save_path}.png', dpi=300)
+plt.show()
+
+#%%
+
+# Initialize variables
+conditions = ['neut', 'pos', 'neg']
+colors = {'neut': 'grey', 'pos': 'green', 'neg': 'red'}
+mean_performances = {cond: [] for cond in conditions}
+sem_performances = {cond: [] for cond in conditions}
+mean_baseline = {cond: [] for cond in conditions}
+sem_baseline = {cond: [] for cond in conditions}
+
+# Plotting
+fig, ax = plt.subplots(figsize=(5, 4))
+
+# Process trial and baseline data
+for cond in conditions:
+    df_cond = df_a[df_a['condition_list'] == cond]
+    num_participants = len(df_cond)
+
+    if num_participants == 0:
+        print(f"No data available for condition {cond}")
+        continue
+
+    # Calculate mean and SEM for trial data
+    trial_data = [np.mean([participant[i]
+                           for participant in df_cond['p_avg_task']])
+                  for i in range(20)]
+    sem_trial = [np.std([participant[i]
+                         for participant in df_cond['p_avg_task']],
+                        ddof=1) / np.sqrt(num_participants)
+                 for i in range(20)]
+
+    # Process baseline data: Use the last 10 trials for each participant
+    last_10_baseline = df_cond['p_avg_baseline'].apply(lambda x: x[-10:])
+    padded_baseline_array = np.array(last_10_baseline.tolist())
+
+    # Calculate mean and SEM for baseline data
+    baseline_data = np.nanmean(padded_baseline_array, axis=0)
+    baseline_sem = np.nanstd(padded_baseline_array,
+                             axis=0, ddof=1) / np.sqrt(num_participants)
+
+    # Adjust baseline and trial data for plotting
+    x_baseline = list(range(-10, 0))
+    x_trial = list(range(0, 20))
+    x_combined = x_baseline + x_trial
+
+    # Combine the baseline and trial data
+    combined_mean = list(baseline_data) + trial_data
+    combined_sem = list(baseline_sem) + sem_trial
+
+    # Plot combined baseline and trial data as a continuous line
+    ax.plot(x_combined, combined_mean, label=f'{cond.capitalize()}',
+            color=colors[cond], lw=2, marker='o')
+    ax.fill_between(x_combined,
+                    [m - s for m, s in zip(combined_mean, combined_sem)],
+                    [m + s for m, s in zip(combined_mean, combined_sem)],
+                    color=colors[cond], alpha=0.2)
+
+#ax.set_title('Performance')
+ax.set_xlabel('Trials relative to start of feedback trials')
+ax.set_ylabel('Performance (mean+-SEM)')
+ax.legend(fontsize=14)
 ax.spines[['top', 'right']].set_visible(False)
 ax.axvline(0, ls='--', c='k', label='Start of Task Trials')
 
 plt.tight_layout()
+save_folder = r"C:/Users/carll/OneDrive/Skrivbord/Oxford/DPhil/metacognition-learning/comparative_models/results/Fixed_feedback/analysis"
+file_name = 'mean_performance_over_trials'
+save_path = os.path.join(save_folder, file_name)
+fig.savefig(f'{save_path}.png', dpi=300)
 plt.show()
-
 #%%
 
 # Get BDI
